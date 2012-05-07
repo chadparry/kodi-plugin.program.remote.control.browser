@@ -4,7 +4,7 @@
 # the config line is split up into pieces and fed directly to
 # xdotool
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_UP
     config = mousestepreset
@@ -13,7 +13,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_UP
     config = mousemove_relative -- 0 -1
@@ -22,7 +22,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_DOWN
     config = mousestepreset
@@ -31,7 +31,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_DOWN
     config = mousemove_relative -- 0 1
@@ -40,16 +40,16 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
-    button = KEY_SELECT
+    button = KEY_OK
     config = click 1
     repeat = 0
     delay = 0
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_LEFT
     config = mousestepreset
@@ -58,7 +58,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_LEFT
     config = mousemove_relative -- -1 0
@@ -67,7 +67,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_RIGHT
     config = mousestepreset
@@ -76,7 +76,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_RIGHT
     config = mousemove_relative -- 1 0
@@ -85,16 +85,16 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
-    button = KEY_EXIT
+    button = KEY_BACK
     config = EXIT
     repeat = 0
     delay = 0
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_REWIND
     config = key --clearmodifiers -- shift+Tab
@@ -103,7 +103,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_AGAIN
     config = key --clearmodifiers -- shift+Tab
@@ -112,7 +112,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_FORWARD
     config = key --clearmodifiers -- Tab
@@ -121,7 +121,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_NEXT
     config = key --clearmodifiers -- Tab
@@ -130,7 +130,7 @@ begin
 end
 
 begin
-    remote = tivo
+    remote = mceusb
     prog = firefox
     button = KEY_PLAY
     config = key --clearmodifiers -- Return
