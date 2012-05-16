@@ -17,6 +17,7 @@ import time
 
 VOLUME_MIN = 0L
 VOLUME_MAX = 100L
+VOLUME_DEFAULT = 50L
 VOLUME_STEP = 5L
 
 def main(args):
@@ -37,6 +38,7 @@ def main(args):
 def ffox(args):
     ffox = subprocess.Popen(["/usr/bin/firefox"] + args[1:])
     mixer = alsaaudio.Mixer()
+    mixer.setvolume(VOLUME_DEFAULT)
     try:
         if not pylirc.init("firefox", "~/.lircrc", 1):
             return "Failed"
