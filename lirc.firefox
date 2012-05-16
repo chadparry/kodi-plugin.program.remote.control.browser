@@ -60,6 +60,33 @@ end
 begin
     remote = mceusb
     prog = firefox
+    button = KEY_VOLUMEUP
+    config = VOLUME_UP
+    repeat = 1
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_VOLUMEDOWN
+    config = VOLUME_DOWN
+    repeat = 1
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_MUTE
+    config = MUTE
+    repeat = 0
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
     button = KEY_REWIND
     config = key --clearmodifiers -- shift+Tab
     repeat = 2
