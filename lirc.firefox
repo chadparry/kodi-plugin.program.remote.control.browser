@@ -7,26 +7,8 @@ begin
     remote = mceusb
     prog = firefox
     button = KEY_UP
-    config = mousestepreset
-    repeat = 0
-    delay = 0
-end
-
-begin
-    remote = mceusb
-    prog = firefox
-    button = KEY_UP
     config = mousemove_relative -- 0 -1
     repeat = 1
-    delay = 0
-end
-
-begin
-    remote = mceusb
-    prog = firefox
-    button = KEY_DOWN
-    config = mousestepreset
-    repeat = 0
     delay = 0
 end
 
@@ -52,26 +34,8 @@ begin
     remote = mceusb
     prog = firefox
     button = KEY_LEFT
-    config = mousestepreset
-    repeat = 0
-    delay = 0
-end
-
-begin
-    remote = mceusb
-    prog = firefox
-    button = KEY_LEFT
     config = mousemove_relative -- -1 0
     repeat = 1
-    delay = 0
-end
-
-begin
-    remote = mceusb
-    prog = firefox
-    button = KEY_RIGHT
-    config = mousestepreset
-    repeat = 0
     delay = 0
 end
 
