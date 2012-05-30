@@ -18,7 +18,7 @@ import time
 VOLUME_MIN = 0L
 VOLUME_MAX = 100L
 VOLUME_DEFAULT = 50L
-VOLUME_STEP = 5L
+VOLUME_STEP = 2L
 
 def main(args):
     """
