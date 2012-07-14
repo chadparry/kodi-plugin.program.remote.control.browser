@@ -104,6 +104,7 @@ def ffox(args):
         ffox.terminate()
     except OSError:
         pass
+    # Sometimes a zombie Flash process sticks around
     #print "Killing children: %s" % children
     for child in children:
         try:
