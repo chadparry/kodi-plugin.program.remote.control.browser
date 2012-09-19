@@ -39,7 +39,7 @@ def main(args):
 
 def ffox(args):
     ffox = subprocess.Popen(["/usr/bin/firefox"] + args[1:])
-    mixer = alsaaudio.Mixer(control='Default')
+    mixer = alsaaudio.Mixer()
     lastvolume = mixer.getvolume()[0]
     mute = lastvolume == 0
     try:
