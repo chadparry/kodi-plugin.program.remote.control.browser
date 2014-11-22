@@ -38,7 +38,7 @@ def main(args):
             subprocess.Popen(["xset", "+dpms"])
 
 def ffox(args):
-    ffox = subprocess.Popen(["/usr/bin/firefox"] + args[1:])
+    ffox = subprocess.Popen(args[1:])
     mixer = alsaaudio.Mixer()
     lastvolume = mixer.getvolume()[0]
     mute = lastvolume == 0
@@ -96,16 +96,11 @@ def ffox(args):
     ps_command.wait()
     children = map(int, ps_output.split("\n")[:-1])
 
-    p1 = subprocess.Popen(["xdotool", "search", "--all", "--pid", str(ffox.pid), "--name", "Mozilla Firefox"], stdout = subprocess.PIPE)
-    p1.wait()
-    windows = p1.stdout.readline().split()
-    for window in windows:
-        #print "'%s'" % window
-        subprocess.Popen(["xdotool", "windowfocus", str(window)])
-        subprocess.Popen(["xdotool", "key", "ctrl+q"])
+    sending_quit = subprocess.Popen(["xdotool", "search", "--pid", str(ffox.pid), "DUMMY", "key", "alt+F4"])
+    sent_quit = not sending_quit.wait()
 
     # If we found windows and they're still running, wait 3 seconds
-    if len(windows) != 0 and ffox.poll() is None:
+    if sent_quit and ffox.poll() is None:
         for i in range(30):
             time.sleep(.1)
             if ffox.poll() is not None:
