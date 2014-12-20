@@ -21,7 +21,9 @@ VOLUME_MIN = 0L
 VOLUME_MAX = 100L
 VOLUME_DEFAULT = 50L
 VOLUME_STEP = 2L
+REPEAT_DELAY = 1
 
+#log = open('/home/mythtv/log.txt', 'w')
 def main(args):
     """
     Fires off firefox, then inits pylirc and waits for remote presses
@@ -42,6 +44,9 @@ def ffox(args):
     mixer = alsaaudio.Mixer()
     lastvolume = mixer.getvolume()[0]
     mute = lastvolume == 0
+    repeat_keys = None
+    repeat_index = None
+    repeat_deadline = None
     try:
         if not pylirc.init("firefox", "~/.lircrc", 1):
             return "Failed"
@@ -51,10 +56,11 @@ def ffox(args):
             if codes is None:
                 continue
             for code in codes:
-                #print code
+                #print >>log, code
                 if code is None:
                     continue
                 config = code["config"].split()
+                repeat = code["repeat"]
                 if config[0] == "EXIT":
                     stop = True
                     break
@@ -82,13 +88,31 @@ def ffox(args):
                     else:
                         volume = lastvolume
                     mixer.setvolume(volume)
+                    break
+                if config[0] == "SMSJUMP":
+                    keys = config[1:]
+                    config = ['key', '--clearmodifiers', '--']
+                    now = time.time()
+                    #print >>log, now, repeat_deadline
+                    if repeat_keys == keys and now <= repeat_deadline:
+                        config.append('BackSpace')
+                        repeat_index += 1
+                        current = keys[repeat_index % len(keys)]
+                        config.append(current)
+                    else:
+                        repeat_keys = keys
+                        repeat_index = 0
+                        config.append(keys[0])
+                    repeat_deadline = now + REPEAT_DELAY
                 if config[0] == "mousemove_relative":
-                    mousestep = min(code["repeat"], 10)
+                    mousestep = min(repeat, 10)
                     config[2] = str(int(config[2]) * mousestep ** 2)
                     config[3] = str(int(config[3]) * mousestep ** 2)
+                #print >>log, ["xdotool"] + config
                 subprocess.Popen(["xdotool"] + config)
+                #log.flush()
     except KeyboardInterrupt:
-        print "Exiting...."
+        #print >>log, "Exiting...."
 
     # Locate child processes
     ps_command = subprocess.Popen(["ps", "-o", "pid", "--ppid", str(ffox.pid), "--noheaders"], stdout = subprocess.PIPE)
@@ -111,7 +135,7 @@ def ffox(args):
     except OSError:
         pass
     # Sometimes a zombie Flash process sticks around
-    #print "Killing children: %s" % children
+    #print >>log, "Killing children: %s" % children
     for child in children:
         try:
             os.kill(child, signal.SIGTERM)
