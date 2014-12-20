@@ -129,3 +129,110 @@ begin
     delay = 0
 end
 
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_1
+    config = key --clearmodifiers -- 1
+    repeat = 0
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_2
+    config = SMSJUMP A B C 2
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_3
+    config = SMSJUMP D E F 3
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_4
+    config = SMSJUMP G H I 4
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_5
+    config = SMSJUMP J K L 5
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_6
+    config = SMSJUMP M N O 6
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_7
+    config = SMSJUMP P Q R S 7
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_8
+    config = SMSJUMP T U V 8
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_9
+    config = SMSJUMP W X Y Z 9
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_0
+    config = SMSJUMP space 0
+    repeat = 5
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_CLEAR
+    config = key --clearmodifiers -- BackSpace
+    repeat = 1
+    delay = 5
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_ENTER
+    config = key --clearmodifiers -- Return
+    repeat = 0
+    delay = 0
+end
