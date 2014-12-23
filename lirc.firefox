@@ -88,7 +88,7 @@ begin
     remote = mceusb
     prog = firefox
     button = KEY_REWIND
-    config = KEY shift+Tab
+    config = KEY shift+Left
     repeat = 2
     delay = 5
 end
@@ -106,7 +106,7 @@ begin
     remote = mceusb
     prog = firefox
     button = KEY_FORWARD
-    config = KEY Tab
+    config = KEY shift+Right
     repeat = 2
     delay = 5
 end
@@ -124,7 +124,16 @@ begin
     remote = mceusb
     prog = firefox
     button = KEY_PLAY
-    config = KEY Return
+    config = KEY Page_Up
+    repeat = 0
+    delay = 0
+end
+
+begin
+    remote = mceusb
+    prog = firefox
+    button = KEY_PAUSE
+    config = KEY Page_Down
     repeat = 0
     delay = 0
 end
