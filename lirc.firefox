@@ -124,7 +124,7 @@ begin
     remote = mceusb
     prog = firefox
     button = KEY_PLAY
-    config = KEY Page_Up
+    config = KEY space
     repeat = 0
     delay = 0
 end
@@ -133,7 +133,7 @@ begin
     remote = mceusb
     prog = firefox
     button = KEY_PAUSE
-    config = KEY Page_Down
+    config = KEY space
     repeat = 0
     delay = 0
 end
