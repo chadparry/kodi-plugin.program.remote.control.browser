@@ -32,6 +32,11 @@ def main(args):
     """
     Fires off firefox, then inits pylirc and waits for remote presses
     """
+    try:
+        subprocess.call(['/usr/local/bin/video-event'])
+    except OSError:
+        pass
+
     xstatus = subprocess.Popen(["xset", "-q"], stdout = subprocess.PIPE)
     xstatus.wait()
     has_dpms = any("DPMS is Enabled" in line for line in xstatus.stdout)
