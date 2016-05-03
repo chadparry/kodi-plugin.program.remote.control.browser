@@ -210,7 +210,7 @@ def launchBrowser(fullUrl, creationflags):
     lastvolume = mixer.getvolume()[0]
     mute = lastvolume == 0
     try:
-        if not pylirc.init("firefox", "~/.lirc/lirc.firefox", 1):
+        if not pylirc.init("browser", os.path.join(addonPath, "resources/data/browser.lirc"), 1):
             return "Failed"
         stop = False
         while not stop:
