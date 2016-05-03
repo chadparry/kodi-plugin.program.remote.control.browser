@@ -4,6 +4,7 @@ import urllib
 import sys
 import re
 import os
+import time
 import subprocess
 import xbmcplugin
 import xbmcgui
@@ -21,6 +22,7 @@ osLinux = xbmc.getCondVisibility('system.platform.linux')
 useOwnProfile = addon.getSetting("useOwnProfile") == "true"
 useCustomPath = addon.getSetting("useCustomPath") == "true"
 customPath = xbmc.translatePath(addon.getSetting("customPath"))
+debug = addon.getSetting("debug") == "true"
 
 userDataFolder = xbmc.translatePath("special://profile/addon_data/"+addonID)
 profileFolder = os.path.join(userDataFolder, 'profile')
@@ -36,6 +38,15 @@ if not os.path.isdir(siteFolder):
 youtubeUrl = "http://www.youtube.com/leanback"
 vimeoUrl = "http://www.vimeo.com/couchmode"
 
+trace_on = False
+try:
+    with open(os.path.join(addonPath,'user_debug.py'),'a'): # touch file
+        pass
+    import user_debug
+    trace_on = user_debug.enable_pydev()
+except (ImportError, AttributeError) as ex:
+   xbmc.log("Debug Disable")
+   pass
 
 def index():
     files = os.listdir(siteFolder)
@@ -106,56 +117,172 @@ def getFileName(title):
 def getFullPath(path, url, useKiosk, userAgent):
     profile = ""
     if useOwnProfile:
-        profile = '--user-data-dir="'+profileFolder+'" '
+        profile = '--user-data-dir='+profileFolder
+        if useKiosk=="yes" and osLinux:
+            # On Linux, chrome kiosk leavs black bars on side/bottom of screen due to an incorrect working size.
+            # We can fix the preferences directly
+            # cat $prefs |perl -pe "s/\"work_area_bottom.*/\"work_area_bottom\": $(xrandr | grep \* | cut -d' ' -f4 | cut -d'x' -f2),/" > $prefs
+            # cat $prefs |perl -pe "s/\"work_area_right.*/\"work_area_right\": $(xrandr | grep \* | cut -d' ' -f4 | cut -d'x' -f1),/" > $prefs
+            try:
+                width, height = 0,0
+                xrandr = subprocess.check_output(['xrandr']).split('\n')
+                for line in xrandr:
+                    match = re.compile('([0-9]+)x([0-9]+).+?\*.+?').findall(line)
+                    if match:
+                        width = int(match[0][0])
+                        height = int(match[0][1])
+                        break
+                prefs = os.path.join(profileFolder, 'Default', 'Preferences')
+                # space for non existing controls. Not sure why it needs it, but it does on my setup
+                top_margin = 30
+
+                with open(prefs, "rb+") as prefsfile:
+                    import json
+                    prefsdata = json.load(prefsfile)
+                    prefs_browser = prefsdata.get('browser', {})
+                    prefs_window_placement = prefs_browser.get('window_placement', {})
+                    prefs_window_placement['always_on_top'] = True
+                    prefs_window_placement['top'] = top_margin
+                    prefs_window_placement['bottom'] = height-top_margin
+                    prefs_window_placement['work_area_bottom'] = height
+                    prefs_window_placement['work_area_right'] = width
+                    prefsdata['browser'] = prefs_browser
+                    prefsdata['browser']['window_placement'] = prefs_window_placement
+                    prefsfile.seek(0)
+                    prefsfile.truncate(0)
+                    json.dump(prefsdata, prefsfile, indent=4, separators=(',', ': '))
+
+            except:
+                xbmc.log("Can't update chrome resolution")
+
+    # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
+    # to redirect to our desired location.
+    black_background = os.path.join(userDataFolder, "black.html")
+    with open(black_background, "w") as launch:
+        launch.write('<html><body style="background:black"><script>window.location.href = "%s";</script></body></html>' % url)
+
     kiosk = ""
     if useKiosk=="yes":
-        kiosk = '--kiosk '
+        kiosk = '--kiosk'
     if userAgent:
-        userAgent = '--user-agent="'+userAgent+'" '
-    return '"'+path+'" '+profile+userAgent+'--start-maximized --disable-translate --disable-new-tab-first-run --no-default-browser-check --no-first-run '+kiosk+'"'+url+'"'
+        userAgent = '--user-agent="'+userAgent+'"'
+    
+    #fullPath = '"'+path+'" '+profile+userAgent+'--start-maximized --disable-translate --disable-new-tab-first-run --no-default-browser-check --no-first-run '+kiosk+'"'+black_background+'"'
+    fullPath = [path, profile, userAgent, '--start-maximized','--disable-translate','--disable-new-tab-first-run','--no-default-browser-check','--no-first-run', kiosk, black_background]
+    for idx in range(0,len(fullPath))[::-1]:
+        if not fullPath[idx]:
+            del fullPath[idx]
+
+    if debug:
+        print "Full Path:"
+        strpath = ""
+        for arg in fullPath:
+            strpath += " " + arg
+        print strpath
+    return fullPath
 
 
 def showSite(url, stopPlayback, kiosk, userAgent):
+    chrome_path = ""
+    creationflags = 0
     if stopPlayback == "yes":
         xbmc.Player().stop()
     if osWin:
+        creationflags = 0x00000008 # DETACHED_PROCESS https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
         path = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
         path64 = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
         if useCustomPath and os.path.exists(customPath):
-            fullUrl = getFullPath(customPath, url, kiosk, userAgent)
-            subprocess.Popen(fullUrl, shell=False)
+            chrome_path = customPath
         elif os.path.exists(path):
-            fullUrl = getFullPath(path, url, kiosk, userAgent)
-            subprocess.Popen(fullUrl, shell=False)
+            chrome_path = path
         elif os.path.exists(path64):
-            fullUrl = getFullPath(path64, url, kiosk, userAgent)
-            subprocess.Popen(fullUrl, shell=False)
-        else:
-            xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
-            addon.openSettings()
+            chrome_path = path64
     elif osOsx:
         path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         if useCustomPath and os.path.exists(customPath):
-            fullUrl = getFullPath(customPath, url, kiosk, userAgent)
-            subprocess.Popen(fullUrl, shell=True)
+            chrome_path = customPath
         elif os.path.exists(path):
-            fullUrl = getFullPath(path, url, kiosk, userAgent)
-            subprocess.Popen(fullUrl, shell=True)
-        else:
-            xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
-            addon.openSettings()
+            chrome_path = path
     elif osLinux:
         path = "/usr/bin/google-chrome"
         if useCustomPath and os.path.exists(customPath):
-            fullUrl = getFullPath(customPath, url, kiosk, userAgent)
-            subprocess.Popen(fullUrl, shell=True)
+            chrome_path = customPath
         elif os.path.exists(path):
-            fullUrl = getFullPath(path, url, kiosk, userAgent)
-            subprocess.Popen(fullUrl, shell=True)
-        else:
-            xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
-            addon.openSettings()
+            chrome_path = path
 
+    if chrome_path:
+        fullUrl = getFullPath(chrome_path, url, kiosk, userAgent)
+        proc = subprocess.Popen(fullUrl, shell=False, creationflags=creationflags, close_fds = True)
+        bringChromeToFront(proc.pid)
+    else:
+        xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
+        addon.openSettings()
+
+
+def bringChromeToFront(pid):
+    if osLinux:
+            # Ensure chrome is active window
+        def currentActiveWindowLinux():
+            name = ""
+            try:
+                # xprop -id $(xprop -root 32x '\t$0' _NET_ACTIVE_WINDOW | cut -f 2) _NET_WM_NAME
+                current_window_id = subprocess.check_output(['xprop', '-root', '32x', '\'\t$0\'', '_NET_ACTIVE_WINDOW'])
+                current_window_id = current_window_id.strip("'").split()[1]
+                current_window_name = subprocess.check_output(['xprop', '-id', current_window_id, "WM_NAME"])
+                if "not found" not in current_window_name and "failed request" not in current_window_name:
+                    current_window_name = current_window_name.strip().split(" = ")[1].strip('"')
+                    name = current_window_name
+            except OSError:
+                pass
+            return name
+
+        def findWid():
+            wid = None
+            match = re.compile("(0x[0-9A-Fa-f]+)").findall(subprocess.check_output(['xprop','-root','_NET_CLIENT_LIST']))
+            if match:
+                for id in match:
+                    try:
+                        wpid = subprocess.check_output(['xprop','-id',id,'_NET_WM_PID'])
+                        wname = subprocess.check_output(['xprop','-id',id,'WM_NAME'])
+                        if str(pid) in wpid:
+                            wid = id
+                    except (OSError, subprocess.CalledProcessError): pass
+            return wid
+
+        try:
+            timeout = time.time() + 10
+            while time.time() < timeout:# and "chrome" not in currentActiveWindowLinux().lower():
+                #windows = subprocess.check_output(['wmctrl', '-l'])
+                #if "Google Chrome" in windows:
+                wid = findWid()
+                if wid:
+                    try:
+                        subprocess.Popen(['wmctrl', '-i', '-a', wid])
+                    except (OSError, subprocess.CalledProcessError):
+                        try:
+                            subprocess.Popen(['xdotool', 'windowactivate', wid])
+                        except (OSError, subprocess.CalledProcessError):
+                            xbmc.log("Please install wmctrl or xdotool")
+                    break
+                xbmc.sleep(500)
+        except (OSError, subprocess.CalledProcessError):
+            pass
+
+    elif osOsx:
+        timeout = time.time() + 10
+        while time.time() < timeout:
+            xbmc.sleep(500)
+            applescript_switch_chrome = """tell application "System Events"
+                    set frontmost of the first process whose unix id is %d to true
+                end tell""" % pid
+            try:
+                subprocess.Popen(['osascript', '-e', applescript_switch_chrome])
+                break
+            except subprocess.CalledProcessError:
+                pass
+    elif osWin:
+        # TODO: find out if this is needed, and if so how to implement
+        pass
 
 def removeSite(title):
     os.remove(os.path.join(siteFolder, getFileName(title)+".link"))
@@ -248,6 +375,10 @@ url = urllib.unquote_plus(params.get('url', ''))
 stopPlayback = urllib.unquote_plus(params.get('stopPlayback', 'no'))
 kiosk = urllib.unquote_plus(params.get('kiosk', 'yes'))
 userAgent = urllib.unquote_plus(params.get('userAgent', ''))
+profileFolderParam = urllib.unquote_plus(params.get('profileFolder', ''))
+if profileFolderParam:
+    useOwnProfile = True
+    profileFolder = profileFolderParam
 
 
 if mode == 'addSite':
@@ -260,3 +391,6 @@ elif mode == 'editSite':
     editSite(url)
 else:
     index()
+
+if trace_on:
+    pydevd.stoptrace()
