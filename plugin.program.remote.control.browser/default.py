@@ -3,6 +3,7 @@
 import alsaaudio
 import contextlib
 import os
+import psutil
 import pylirc
 import re
 import signal
@@ -45,6 +46,7 @@ VOLUME_MAX = 100L
 VOLUME_DEFAULT = 50L
 VOLUME_STEP = 2L
 RELEASE_KEY_DELAY = 1
+BROWSER_EXIT_DELAY = 3
 youtubeUrl = "http://www.youtube.com/leanback"
 vimeoUrl = "http://www.vimeo.com/couchmode"
 
@@ -60,6 +62,14 @@ try:
 except (ImportError, AttributeError) as ex:
    xbmc.log("Debug Disable")
    pass
+
+def getProcessTree(parent):
+    try:
+        process = psutil.Process(parent)
+        processes = [process] + process.get_children(recursive=True)
+        return [node.pid for node in processes]
+    except psutil.NoSuchProcess:
+        return []
 
 @contextlib.contextmanager
 def suspendXbmcLirc():
@@ -78,17 +88,37 @@ def runPylirc(name, configuration, blocking):
     finally:
         pylirc.exit()
 
+def killBrowser(proc, sig):
+    for pid in getProcessTree(proc.pid):
+        try:
+            os.kill(pid, sig)
+        except OSError:
+            pass
+
 @contextlib.contextmanager
 def runBrowser(args, creationflags):
     proc = subprocess.Popen(args, creationflags=creationflags, close_fds=True)
+
+    isRunning = True
     try:
         yield proc
-    finally:
+
+        # Ask each child process to exit.
+        killBrowser(proc, signal.SIGTERM)
+
+        # Give the browser a few seconds to shut down gracefully.
+        terminator = threading.Timer(BROWSER_EXIT_DELAY, lambda: killBrowser(proc, signal.SIGKILL))
+        terminator.start()
         try:
-            proc.kill()
             proc.wait()
-        except OSError:
-            pass
+            isRunning = False
+        finally:
+            terminator.cancel()
+    finally:
+        if isRunning:
+            # As a last resort, forcibly kill the browser.
+            killBrowser(proc, signal.SIGKILL)
+            proc.wait()
 
 def index():
     files = os.listdir(siteFolder)
@@ -241,120 +271,97 @@ def launchBrowser(fullUrl, creationflags):
         mixer = alsaaudio.Mixer()
         lastvolume = mixer.getvolume()[0]
         mute = lastvolume == 0
-        try:
-            stop = False
-            while not stop:
-                with repeat_lock:
-                    is_blocking = release_key_token is None
-                pylirc.blocking(is_blocking)
-                codes = pylirc.nextcode(1)
-                if not codes:
-                    if not is_blocking:
-                        time.sleep(0.05)
+        isExiting = False
+        while not isExiting:
+            with repeat_lock:
+                is_blocking = release_key_token is None
+            pylirc.blocking(is_blocking)
+            codes = pylirc.nextcode(1)
+            if not codes:
+                if not is_blocking:
+                    time.sleep(0.05)
+                continue
+            for code in codes:
+                #print >>log, code
+                if code is None:
                     continue
-                for code in codes:
-                    #print >>log, code
-                    if code is None:
-                        continue
-                    config = code["config"].split()
-                    repeat = code["repeat"]
-                    if config[0] == "EXIT":
-                        stop = True
-                        break
-                    if config[0] == "VOLUME_UP":
-                        if mute:
-                            mute = False
-                            volume = lastvolume
-                        else:
-                            volume = mixer.getvolume()[0]
-                        volume = min(volume + VOLUME_STEP, VOLUME_MAX)
-                        mixer.setvolume(volume)
-                        break
-                    if config[0] == "VOLUME_DOWN":
+                config = code["config"].split()
+                repeat = code["repeat"]
+                if config[0] == "EXIT":
+                    config = ['key', 'alt+F4']
+                    isExiting = True
+                if config[0] == "VOLUME_UP":
+                    if mute:
+                        mute = False
+                        volume = lastvolume
+                    else:
                         volume = mixer.getvolume()[0]
-                        volume = max(volume - VOLUME_STEP, VOLUME_MIN)
-                        mixer.setvolume(volume)
-                        break
-                    if config[0] == "MUTE":
-                        mute = not mute
-                        if mute:
-                            volume = VOLUME_MIN
-                            lastvolume = mixer.getvolume()[0]
-                        elif lastvolume == VOLUME_MIN:
-                            volume = VOLUME_DEFAULT
-                        else:
-                            volume = lastvolume
-                        mixer.setvolume(volume)
-                        break
-                    if config[0] == "SMSJUMP":
-                        keys = config[1:]
-                        config = ['key', '--clearmodifiers', '--']
-                        with repeat_lock:
-                            if release_key_token is not None and repeat_keys == keys:
-                                repeat_index += 1
-                                current = keys[repeat_index % len(keys)]
-                                config.append(current)
-                            else:
-                                if release_key_token is not None:
-                                    config.append('Right')
-                                repeat_keys = keys
-                                repeat_index = 0
-                                config.append(keys[0])
-                            config.append('Shift+Left')
-                            subprocess.Popen(["xdotool"] + config)
-                            if release_key_token is not None:
-                                release_key_timer.cancel()
-                            release_key_token = object()
-                            release_key_timer = threading.Timer(RELEASE_KEY_DELAY, releaseKey, [release_key_token])
-                            release_key_timer.start()
-                            break
-                    if config[0] == "KEY":
-                        keys = config[1:]
-                        config = ['key', '--clearmodifiers', '--']
-                        with repeat_lock:
-                            if release_key_token is not None:
-                                release_key_token = None
-                                release_key_timer.cancel()
-                                config.append('Right')
-                        config.extend(keys)
-                    if config[0] == "mousemove_relative":
-                        mousestep = min(repeat, 10)
-                        config[2] = str(int(config[2]) * mousestep ** 2)
-                        config[3] = str(int(config[3]) * mousestep ** 2)
-                    #print >>log, ["xdotool"] + config
-                    subprocess.Popen(["xdotool"] + config)
-                    #log.flush()
-        except KeyboardInterrupt:
-            #print >>log, "Exiting...."
-            pass
-
-        # Locate child processes
-        ps_command = subprocess.Popen(["ps", "-o", "pid", "--ppid", str(browser.pid), "--noheaders"], stdout = subprocess.PIPE)
-        ps_output = ps_command.stdout.read()
-        ps_command.wait()
-        children = map(int, ps_output.split("\n")[:-1])
-
-        sending_quit = subprocess.Popen(["xdotool", "search", "--pid", str(browser.pid), "DUMMY", "key", "alt+F4"])
-        sent_quit = not sending_quit.wait()
-
-        # If we found windows and they're still running, wait 3 seconds
-        if sent_quit and browser.poll() is None:
-            for i in range(30):
-                time.sleep(.1)
-                if browser.poll() is not None:
+                    volume = min(volume + VOLUME_STEP, VOLUME_MAX)
+                    mixer.setvolume(volume)
                     break
-        # Okay now we can forcibly kill it
-        try:
-            browser.terminate()
-        except OSError:
-            pass
-        # Sometimes a zombie Flash process sticks around
-        #print >>log, "Killing children: %s" % children
-        for child in children:
-            try:
-                os.kill(child, signal.SIGTERM)
-            except OSError:
-                pass
+                if config[0] == "VOLUME_DOWN":
+                    volume = mixer.getvolume()[0]
+                    volume = max(volume - VOLUME_STEP, VOLUME_MIN)
+                    mixer.setvolume(volume)
+                    break
+                if config[0] == "MUTE":
+                    mute = not mute
+                    if mute:
+                        volume = VOLUME_MIN
+                        lastvolume = mixer.getvolume()[0]
+                    elif lastvolume == VOLUME_MIN:
+                        volume = VOLUME_DEFAULT
+                    else:
+                        volume = lastvolume
+                    mixer.setvolume(volume)
+                    break
+                if config[0] == "VOLUME_UP":
+                    xbmc.executebuiltin('VolumeUp')
+                    break
+                if config[0] == "VOLUME_DOWN":
+                    xbmc.executebuiltin('VolumeDown')
+                    break
+                if config[0] == "MUTE":
+                    xbmc.executebuiltin('Mute')
+                    break
+                if config[0] == "SMSJUMP":
+                    keys = config[1:]
+                    config = ['key', '--clearmodifiers', '--']
+                    with repeat_lock:
+                        if release_key_token is not None and repeat_keys == keys:
+                            repeat_index += 1
+                            current = keys[repeat_index % len(keys)]
+                            config.append(current)
+                        else:
+                            if release_key_token is not None:
+                                config.append('Right')
+                            repeat_keys = keys
+                            repeat_index = 0
+                            config.append(keys[0])
+                        config.append('Shift+Left')
+                        subprocess.Popen(["xdotool"] + config)
+                        if release_key_token is not None:
+                            release_key_timer.cancel()
+                        release_key_token = object()
+                        release_key_timer = threading.Timer(RELEASE_KEY_DELAY, releaseKey, [release_key_token])
+                        release_key_timer.start()
+                        break
+                if config[0] == "KEY":
+                    keys = config[1:]
+                    config = ['key', '--clearmodifiers', '--']
+                    with repeat_lock:
+                        if release_key_token is not None:
+                            release_key_token = None
+                            release_key_timer.cancel()
+                            config.append('Right')
+                    config.extend(keys)
+                if config[0] == "mousemove_relative":
+                    mousestep = min(repeat, 10)
+                    config[2] = str(int(config[2]) * mousestep ** 2)
+                    config[3] = str(int(config[3]) * mousestep ** 2)
+                #print >>log, ["xdotool"] + config
+                subprocess.Popen(["xdotool"] + config)
+                #log.flush()
 
 def showSite(url, stopPlayback, kiosk, userAgent):
     chrome_path = ""
