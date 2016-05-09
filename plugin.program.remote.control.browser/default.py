@@ -78,6 +78,18 @@ def runPylirc(name, configuration, blocking):
     finally:
         pylirc.exit()
 
+@contextlib.contextmanager
+def runBrowser(args, creationflags):
+    proc = subprocess.Popen(args, creationflags=creationflags, close_fds=True)
+    try:
+        yield proc
+    finally:
+        try:
+            proc.kill()
+            proc.wait()
+        except OSError:
+            pass
+
 def index():
     files = os.listdir(siteFolder)
     for file in files:
@@ -222,10 +234,10 @@ def releaseKey(expected_key_token):
 
 def launchBrowser(fullUrl, creationflags):
     lircConfig = os.path.join(addonPath, "resources/data/browser.lirc")
-    with suspendXbmcLirc(), runPylirc("browser", lircConfig, blocking=True):
+    with suspendXbmcLirc(), runPylirc("browser", lircConfig, blocking=True), (
+            runBrowser(fullUrl, creationflags)) as browser:
         global release_key_token
-        proc = subprocess.Popen(fullUrl, shell=False, creationflags=creationflags, close_fds = True)
-        bringChromeToFront(proc.pid)
+        bringChromeToFront(browser.pid)
         mixer = alsaaudio.Mixer()
         lastvolume = mixer.getvolume()[0]
         mute = lastvolume == 0
@@ -317,23 +329,23 @@ def launchBrowser(fullUrl, creationflags):
             pass
 
         # Locate child processes
-        ps_command = subprocess.Popen(["ps", "-o", "pid", "--ppid", str(proc.pid), "--noheaders"], stdout = subprocess.PIPE)
+        ps_command = subprocess.Popen(["ps", "-o", "pid", "--ppid", str(browser.pid), "--noheaders"], stdout = subprocess.PIPE)
         ps_output = ps_command.stdout.read()
         ps_command.wait()
         children = map(int, ps_output.split("\n")[:-1])
 
-        sending_quit = subprocess.Popen(["xdotool", "search", "--pid", str(proc.pid), "DUMMY", "key", "alt+F4"])
+        sending_quit = subprocess.Popen(["xdotool", "search", "--pid", str(browser.pid), "DUMMY", "key", "alt+F4"])
         sent_quit = not sending_quit.wait()
 
         # If we found windows and they're still running, wait 3 seconds
-        if sent_quit and proc.poll() is None:
+        if sent_quit and browser.poll() is None:
             for i in range(30):
                 time.sleep(.1)
-                if proc.poll() is not None:
+                if browser.poll() is not None:
                     break
         # Okay now we can forcibly kill it
         try:
-            proc.terminate()
+            browser.terminate()
         except OSError:
             pass
         # Sometimes a zombie Flash process sticks around
