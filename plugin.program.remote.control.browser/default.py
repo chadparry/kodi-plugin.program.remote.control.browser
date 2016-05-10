@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 import alsaaudio
 import contextlib
+import datetime
 import os
 import psutil
 import pylirc
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -45,13 +47,12 @@ VOLUME_MIN = 0L
 VOLUME_MAX = 100L
 VOLUME_DEFAULT = 50L
 VOLUME_STEP = 2L
-RELEASE_KEY_DELAY = 1
-BROWSER_EXIT_DELAY = 3
+RELEASE_KEY_DELAY = datetime.timedelta(seconds=1)
+BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
+PYLIRC_CONFIG = "config"
+PYLIRC_REPEAT = "repeat"
 youtubeUrl = "http://www.youtube.com/leanback"
 vimeoUrl = "http://www.vimeo.com/couchmode"
-
-repeat_lock = threading.Lock()
-release_key_token = None
 
 trace_on = False
 try:
@@ -80,11 +81,12 @@ def suspendXbmcLirc():
         xbmc.executebuiltin("LIRC.Start")
 
 @contextlib.contextmanager
-def runPylirc(name, configuration, blocking):
-    if not pylirc.init(name, configuration, blocking):
+def runPylirc(name, configuration):
+    fd = pylirc.init(name, configuration)
+    if not fd:
         raise RuntimeError('Failed to initialize pylirc')
     try:
-        yield
+        yield fd
     finally:
         pylirc.exit()
 
@@ -107,7 +109,8 @@ def runBrowser(args, creationflags):
         killBrowser(proc, signal.SIGTERM)
 
         # Give the browser a few seconds to shut down gracefully.
-        terminator = threading.Timer(BROWSER_EXIT_DELAY, lambda: killBrowser(proc, signal.SIGKILL))
+        terminator = threading.Timer(BROWSER_EXIT_DELAY.total_seconds(),
+            lambda: killBrowser(proc, signal.SIGKILL))
         terminator.start()
         try:
             proc.wait()
@@ -254,39 +257,38 @@ def getFullPath(path, url, useKiosk, userAgent):
     return fullPath
 
 
-def releaseKey(expected_key_token):
-    global release_key_token
-    with repeat_lock:
-        if release_key_token is expected_key_token:
-            release_key_token = None
-            subprocess.Popen(["xdotool", "key", "--clearmodifiers", "--", "Right"])
-
-
 def launchBrowser(fullUrl, creationflags):
     lircConfig = os.path.join(addonPath, "resources/data/browser.lirc")
-    with suspendXbmcLirc(), runPylirc("browser", lircConfig, blocking=True), (
+    with suspendXbmcLirc(), runPylirc("browser", lircConfig) as lircFd, (
             runBrowser(fullUrl, creationflags)) as browser:
-        global release_key_token
         bringChromeToFront(browser.pid)
+
         mixer = alsaaudio.Mixer()
         lastvolume = mixer.getvolume()[0]
         mute = lastvolume == 0
+        releaseKeyTime = None
+        repeatKeys = None
         isExiting = False
         while not isExiting:
-            with repeat_lock:
-                is_blocking = release_key_token is None
-            pylirc.blocking(is_blocking)
-            codes = pylirc.nextcode(1)
-            if not codes:
-                if not is_blocking:
-                    time.sleep(0.05)
-                continue
+            if releaseKeyTime is None:
+                timeout = None
+            else:
+                timeout = max((releaseKeyTime - datetime.datetime.now()).total_seconds(), 0)
+            (rlist, wlist, xlist) = select.select([lircFd], [], [], timeout)
+            if lircFd in rlist:
+                codes = pylirc.nextcode(True)
+            else:
+                codes = []
+            if releaseKeyTime is not None and releaseKeyTime <= datetime.datetime.now():
+                codes.append({PYLIRC_CONFIG: 'RELEASE', PYLIRC_REPEAT: 0})
+                releaseKeyTime = None
+
             for code in codes:
                 #print >>log, code
                 if code is None:
                     continue
-                config = code["config"].split()
-                repeat = code["repeat"]
+                config = code[PYLIRC_CONFIG].split()
+                repeat = code[PYLIRC_REPEAT]
                 if config[0] == "EXIT":
                     config = ['key', 'alt+F4']
                     isExiting = True
@@ -315,46 +317,32 @@ def launchBrowser(fullUrl, creationflags):
                         volume = lastvolume
                     mixer.setvolume(volume)
                     break
-                if config[0] == "VOLUME_UP":
-                    xbmc.executebuiltin('VolumeUp')
-                    break
-                if config[0] == "VOLUME_DOWN":
-                    xbmc.executebuiltin('VolumeDown')
-                    break
-                if config[0] == "MUTE":
-                    xbmc.executebuiltin('Mute')
-                    break
                 if config[0] == "SMSJUMP":
                     keys = config[1:]
                     config = ['key', '--clearmodifiers', '--']
-                    with repeat_lock:
-                        if release_key_token is not None and repeat_keys == keys:
-                            repeat_index += 1
-                            current = keys[repeat_index % len(keys)]
-                            config.append(current)
-                        else:
-                            if release_key_token is not None:
-                                config.append('Right')
-                            repeat_keys = keys
-                            repeat_index = 0
-                            config.append(keys[0])
-                        config.append('Shift+Left')
-                        subprocess.Popen(["xdotool"] + config)
-                        if release_key_token is not None:
-                            release_key_timer.cancel()
-                        release_key_token = object()
-                        release_key_timer = threading.Timer(RELEASE_KEY_DELAY, releaseKey, [release_key_token])
-                        release_key_timer.start()
-                        break
+                    if releaseKeyTime is not None and repeatKeys == keys:
+                        repeatIndex += 1
+                    else:
+                        if releaseKeyTime is not None:
+                            config.append('Right')
+                        repeatKeys = keys
+                        repeatIndex = 0
+                    current = keys[repeatIndex % len(keys)]
+                    config.append(current)
+                    config.append('Shift+Left')
+                    subprocess.Popen(["xdotool"] + config)
+
+                    releaseKeyTime = datetime.datetime.now() + RELEASE_KEY_DELAY
+                    break
                 if config[0] == "KEY":
                     keys = config[1:]
                     config = ['key', '--clearmodifiers', '--']
-                    with repeat_lock:
-                        if release_key_token is not None:
-                            release_key_token = None
-                            release_key_timer.cancel()
-                            config.append('Right')
+                    if releaseKeyTime is not None:
+                        config.append('Right')
+                        releaseKeyTime = None
                     config.extend(keys)
+                if config[0] == "RELEASE":
+                    config = ['key', 'Right']
                 if config[0] == "mousemove_relative":
                     mousestep = min(repeat, 10)
                     config[2] = str(int(config[2]) * mousestep ** 2)
