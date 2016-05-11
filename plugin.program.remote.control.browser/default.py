@@ -9,6 +9,7 @@ import pylirc
 import re
 import select
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -90,6 +91,10 @@ def runPylirc(name, configuration):
     finally:
         pylirc.exit()
 
+def monitorProcess(proc, exitSocket):
+    proc.wait()
+    exitSocket.shutdown(socket.SHUT_RDWR)
+
 def killBrowser(proc, sig):
     for pid in getProcessTree(proc.pid):
         try:
@@ -99,29 +104,41 @@ def killBrowser(proc, sig):
 
 @contextlib.contextmanager
 def runBrowser(args, creationflags):
-    proc = subprocess.Popen(args, creationflags=creationflags, close_fds=True)
-
-    isRunning = True
-    try:
-        yield proc
-
-        # Ask each child process to exit.
-        killBrowser(proc, signal.SIGTERM)
-
-        # Give the browser a few seconds to shut down gracefully.
-        terminator = threading.Timer(BROWSER_EXIT_DELAY.total_seconds(),
-            lambda: killBrowser(proc, signal.SIGKILL))
-        terminator.start()
+    (sink, source) = socket.socketpair()
+    with contextlib.closing(sink), contextlib.closing(source):
+        waiter = None
         try:
-            proc.wait()
-            isRunning = False
+            proc = subprocess.Popen(args, creationflags=creationflags, close_fds=True)
+            try:
+                # Monitor the browser and kick the socket when it exits.
+                waiterStarting = threading.Thread(target=monitorProcess, args=(proc, source))
+                waiterStarting.start()
+                waiter = waiterStarting
+
+                yield (proc, sink.fileno())
+
+                # Ask each child process to exit.
+                killBrowser(proc, signal.SIGTERM)
+
+                # Give the browser a few seconds to shut down gracefully.
+                terminator = threading.Timer(BROWSER_EXIT_DELAY.total_seconds(),
+                    lambda: killBrowser(proc, signal.SIGKILL))
+                terminator.start()
+                try:
+                    proc.wait()
+                    proc = None
+                finally:
+                    terminator.cancel()
+                    terminator.join()
+            finally:
+                if proc is not None:
+                    # As a last resort, forcibly kill the browser.
+                    killBrowser(proc, signal.SIGKILL)
+                    proc.wait()
         finally:
-            terminator.cancel()
-    finally:
-        if isRunning:
-            # As a last resort, forcibly kill the browser.
-            killBrowser(proc, signal.SIGKILL)
-            proc.wait()
+            if waiter is not None:
+                waiter.join()
+
 
 def index():
     files = os.listdir(siteFolder)
@@ -260,7 +277,7 @@ def getFullPath(path, url, useKiosk, userAgent):
 def launchBrowser(fullUrl, creationflags):
     lircConfig = os.path.join(addonPath, "resources/data/browser.lirc")
     with suspendXbmcLirc(), runPylirc("browser", lircConfig) as lircFd, (
-            runBrowser(fullUrl, creationflags)) as browser:
+            runBrowser(fullUrl, creationflags)) as (browser, browserExitFd):
         bringChromeToFront(browser.pid)
 
         mixer = alsaaudio.Mixer()
@@ -274,7 +291,10 @@ def launchBrowser(fullUrl, creationflags):
                 timeout = None
             else:
                 timeout = max((releaseKeyTime - datetime.datetime.now()).total_seconds(), 0)
-            (rlist, wlist, xlist) = select.select([lircFd], [], [], timeout)
+            (rlist, wlist, xlist) = select.select([lircFd, browserExitFd], [], [], timeout)
+            if browserExitFd in rlist:
+                # The browser exited prematurely.
+                break
             if lircFd in rlist:
                 codes = pylirc.nextcode(True)
             else:
