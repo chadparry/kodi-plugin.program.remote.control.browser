@@ -31,7 +31,6 @@ osLinux = xbmc.getCondVisibility('system.platform.linux')
 useOwnProfile = addon.getSetting("useOwnProfile") == "true"
 useCustomPath = addon.getSetting("useCustomPath") == "true"
 customPath = xbmc.translatePath(addon.getSetting("customPath"))
-debug = addon.getSetting("debug") == "true"
 
 userDataFolder = xbmc.translatePath("special://profile/addon_data/"+addonID)
 profileFolder = os.path.join(userDataFolder, 'profile')
@@ -54,16 +53,6 @@ PYLIRC_CONFIG = "config"
 PYLIRC_REPEAT = "repeat"
 youtubeUrl = "http://www.youtube.com/leanback"
 vimeoUrl = "http://www.vimeo.com/couchmode"
-
-trace_on = False
-try:
-    with open(os.path.join(addonPath,'user_debug.py'),'a'): # touch file
-        pass
-    import user_debug
-    trace_on = user_debug.enable_pydev()
-except (ImportError, AttributeError) as ex:
-   xbmc.log("Debug Disable")
-   pass
 
 def getProcessTree(parent):
     try:
@@ -278,7 +267,7 @@ def getFullPath(path, url, useKiosk, userAgent):
                     json.dump(prefsdata, prefsfile, indent=4, separators=(',', ': '))
 
             except:
-                xbmc.log("Can't update chrome resolution")
+                xbmc.log("Can't update chrome resolution", xbmc.LOGINFO)
 
     # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
     # to redirect to our desired location.
@@ -298,12 +287,10 @@ def getFullPath(path, url, useKiosk, userAgent):
         if not fullPath[idx]:
             del fullPath[idx]
 
-    if debug:
-        print "Full Path:"
-        strpath = ""
-        for arg in fullPath:
-            strpath += " " + arg
-        print strpath
+    strpath = ""
+    for arg in fullPath:
+        strpath += " " + arg
+    xbmc.log('Full Path: ' + str(strpath), xbmc.LOGDEBUG)
     return fullPath
 
 
@@ -339,7 +326,7 @@ def launchBrowser(fullUrl, creationflags):
                 releaseKeyTime = None
 
             for code in codes:
-                #print >>log, code
+                xbmc.log('Received LIRC code: ' + str(code), xbmc.LOGDEBUG)
                 if code is None:
                     continue
                 config = code[PYLIRC_CONFIG].split()
@@ -402,9 +389,9 @@ def launchBrowser(fullUrl, creationflags):
                     mousestep = min(repeat, 10)
                     config[2] = str(int(config[2]) * mousestep ** 2)
                     config[3] = str(int(config[3]) * mousestep ** 2)
-                #print >>log, ["xdotool"] + config
-                subprocess.check_call(["xdotool"] + config)
-                #log.flush()
+                cmd = ["xdotool"] + config
+                xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
+                subprocess.check_call(cmd)
 
 def showSite(url, stopPlayback, kiosk, userAgent):
     chrome_path = ""
@@ -550,5 +537,3 @@ elif mode == 'editSite':
 else:
     index()
 
-if trace_on:
-    pydevd.stoptrace()
