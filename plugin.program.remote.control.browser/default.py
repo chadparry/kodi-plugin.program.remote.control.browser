@@ -139,6 +139,39 @@ def runBrowser(args, creationflags):
             if waiter is not None:
                 waiter.join()
 
+def activateWindow(cmd, proc, aborting):
+    (output, error) = proc.communicate()
+    if aborting.is_set():
+        return
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd, output)
+    wids = [wid for wid in output.split('\n') if wid]
+    for wid in wids:
+        if aborting.is_set():
+            return
+        subprocess.call(['xdotool', 'WindowActivate', wid])
+
+@contextlib.contextmanager
+def raiseBrowser(pid):
+    activator = None
+    # With the "sync" flag, the command could block indefinitely.
+    cmd = ['xdotool', 'search', '--sync', '--onlyvisible', '--pid', str(pid)]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+    try:
+        aborting = threading.Event()
+        activatorStarting = threading.Thread(target=activateWindow, args=(cmd, proc, aborting))
+        activatorStarting.start()
+        activator = activatorStarting
+
+        yield
+    finally:
+        aborting.set()
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+        if activator is not None:
+            activator.join()
+
 
 def index():
     files = os.listdir(siteFolder)
@@ -276,9 +309,11 @@ def getFullPath(path, url, useKiosk, userAgent):
 
 def launchBrowser(fullUrl, creationflags):
     lircConfig = os.path.join(addonPath, "resources/data/browser.lirc")
-    with suspendXbmcLirc(), runPylirc("browser", lircConfig) as lircFd, (
-            runBrowser(fullUrl, creationflags)) as (browser, browserExitFd):
-        bringChromeToFront(browser.pid)
+    with (
+            suspendXbmcLirc()), (
+            runPylirc("browser", lircConfig)) as lircFd, (
+            runBrowser(fullUrl, creationflags)) as (browser, browserExitFd), (
+            raiseBrowser(browser.pid)):
 
         mixer = alsaaudio.Mixer()
         lastvolume = mixer.getvolume()[0]
@@ -406,71 +441,6 @@ def showSite(url, stopPlayback, kiosk, userAgent):
         xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
         addon.openSettings()
 
-
-def bringChromeToFront(pid):
-    if osLinux:
-            # Ensure chrome is active window
-        def currentActiveWindowLinux():
-            name = ""
-            try:
-                # xprop -id $(xprop -root 32x '\t$0' _NET_ACTIVE_WINDOW | cut -f 2) _NET_WM_NAME
-                current_window_id = subprocess.check_output(['xprop', '-root', '32x', '\'\t$0\'', '_NET_ACTIVE_WINDOW'])
-                current_window_id = current_window_id.strip("'").split()[1]
-                current_window_name = subprocess.check_output(['xprop', '-id', current_window_id, "WM_NAME"])
-                if "not found" not in current_window_name and "failed request" not in current_window_name:
-                    current_window_name = current_window_name.strip().split(" = ")[1].strip('"')
-                    name = current_window_name
-            except OSError:
-                pass
-            return name
-
-        def findWid():
-            wid = None
-            match = re.compile("(0x[0-9A-Fa-f]+)").findall(subprocess.check_output(['xprop','-root','_NET_CLIENT_LIST']))
-            if match:
-                for id in match:
-                    try:
-                        wpid = subprocess.check_output(['xprop','-id',id,'_NET_WM_PID'])
-                        wname = subprocess.check_output(['xprop','-id',id,'WM_NAME'])
-                        if str(pid) in wpid:
-                            wid = id
-                    except (OSError, subprocess.CalledProcessError): pass
-            return wid
-
-        try:
-            timeout = time.time() + 10
-            while time.time() < timeout:# and "chrome" not in currentActiveWindowLinux().lower():
-                #windows = subprocess.check_output(['wmctrl', '-l'])
-                #if "Google Chrome" in windows:
-                wid = findWid()
-                if wid:
-                    try:
-                        subprocess.Popen(['wmctrl', '-i', '-a', wid])
-                    except (OSError, subprocess.CalledProcessError):
-                        try:
-                            subprocess.Popen(['xdotool', 'windowactivate', wid])
-                        except (OSError, subprocess.CalledProcessError):
-                            xbmc.log("Please install wmctrl or xdotool")
-                    break
-                xbmc.sleep(500)
-        except (OSError, subprocess.CalledProcessError):
-            pass
-
-    elif osOsx:
-        timeout = time.time() + 10
-        while time.time() < timeout:
-            xbmc.sleep(500)
-            applescript_switch_chrome = """tell application "System Events"
-                    set frontmost of the first process whose unix id is %d to true
-                end tell""" % pid
-            try:
-                subprocess.Popen(['osascript', '-e', applescript_switch_chrome])
-                break
-            except subprocess.CalledProcessError:
-                pass
-    elif osWin:
-        # TODO: find out if this is needed, and if so how to implement
-        pass
 
 def removeSite(title):
     os.remove(os.path.join(siteFolder, getFileName(title)+".link"))
