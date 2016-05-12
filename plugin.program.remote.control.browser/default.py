@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 import alsaaudio
+import collections
 import contextlib
 import datetime
 import os
@@ -49,10 +50,10 @@ VOLUME_DEFAULT = 50L
 VOLUME_STEP = 2L
 RELEASE_KEY_DELAY = datetime.timedelta(seconds=1)
 BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
-PYLIRC_CONFIG = "config"
-PYLIRC_REPEAT = "repeat"
 youtubeUrl = "http://www.youtube.com/leanback"
 vimeoUrl = "http://www.vimeo.com/couchmode"
+
+PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
 
 def getProcessTree(parent):
     try:
@@ -318,23 +319,22 @@ def launchBrowser(fullUrl, creationflags):
                 # The browser exited prematurely.
                 break
             if lircFd in rlist:
-                codes = pylirc.nextcode(True)
+                buttons = pylirc.nextcode(True)
             else:
-                codes = []
+                buttons = None
+            codes = [PylircCode(**button) for button in buttons] if buttons else []
             if releaseKeyTime is not None and releaseKeyTime <= datetime.datetime.now():
-                codes.append({PYLIRC_CONFIG: 'RELEASE', PYLIRC_REPEAT: 0})
-                releaseKeyTime = None
+                codes.append(PylircCode(config='RELEASE', repeat=0))
 
             for code in codes:
                 xbmc.log('Received LIRC code: ' + str(code), xbmc.LOGDEBUG)
-                if code is None:
-                    continue
-                config = code[PYLIRC_CONFIG].split()
-                repeat = code[PYLIRC_REPEAT]
-                if config[0] == "EXIT":
-                    config = ['key', 'alt+F4']
-                    isExiting = True
-                if config[0] == "VOLUME_UP":
+                tokens = code.config.split()
+                (command, args) = (tokens[0], tokens[1:])
+                isReleasing = False
+                nextReleaseKeyTime = None
+                inputs = None
+
+                if command == 'VOLUME_UP':
                     if mute:
                         mute = False
                         volume = lastvolume
@@ -342,13 +342,11 @@ def launchBrowser(fullUrl, creationflags):
                         volume = mixer.getvolume()[0]
                     volume = min(volume + VOLUME_STEP, VOLUME_MAX)
                     mixer.setvolume(volume)
-                    break
-                if config[0] == "VOLUME_DOWN":
+                elif command == 'VOLUME_DOWN':
                     volume = mixer.getvolume()[0]
                     volume = max(volume - VOLUME_STEP, VOLUME_MIN)
                     mixer.setvolume(volume)
-                    break
-                if config[0] == "MUTE":
+                elif command == 'MUTE':
                     mute = not mute
                     if mute:
                         volume = VOLUME_MIN
@@ -358,40 +356,46 @@ def launchBrowser(fullUrl, creationflags):
                     else:
                         volume = lastvolume
                     mixer.setvolume(volume)
-                    break
-                if config[0] == "SMSJUMP":
-                    keys = config[1:]
-                    config = ['key', '--clearmodifiers', '--']
-                    if releaseKeyTime is not None and repeatKeys == keys:
+                elif command == 'MULTITAP':
+                    if releaseKeyTime is not None and repeatKeys == args:
                         repeatIndex += 1
                     else:
-                        if releaseKeyTime is not None:
-                            config.append('Right')
-                        repeatKeys = keys
+                        isReleasing = True
+                        repeatKeys = args
                         repeatIndex = 0
-                    current = keys[repeatIndex % len(keys)]
-                    config.append(current)
-                    config.append('Shift+Left')
-                    subprocess.check_call(["xdotool"] + config)
+                    nextReleaseKeyTime = datetime.datetime.now() + RELEASE_KEY_DELAY
+                    current = args[repeatIndex % len(args)]
+                    inputs = ['key', '--clearmodifiers', '--', current, 'Shift+Left']
+                elif command == 'KEY':
+                    isReleasing = True
+                    inputs = ['key', '--clearmodifiers', '--'] + args
+                elif command == 'CLICK':
+                    isReleasing = True
+                    inputs = ['click', '--clearmodifiers', '1']
+                elif command == 'MOUSE':
+                    step = min(code.repeat, 10)
+                    (horizontal, vertical) = args
+                    acceleratedHorizontal = str(int(horizontal) * step ** 2)
+                    acceleratedVertical = str(int(vertical) * step ** 2)
+                    inputs = ['mousemove_relative', '--', acceleratedHorizontal, acceleratedVertical]
+                elif command == 'EXIT':
+                    inputs = ['key', 'Alt+F4']
+                    isExiting = True
+                elif command == 'RELEASE':
+                    isReleasing = True
+                else:
+                    raise RuntimeError('Unrecognized LIRC config: ' + command)
 
-                    releaseKeyTime = datetime.datetime.now() + RELEASE_KEY_DELAY
-                    break
-                if config[0] == "KEY":
-                    keys = config[1:]
-                    config = ['key', '--clearmodifiers', '--']
-                    if releaseKeyTime is not None:
-                        config.append('Right')
-                        releaseKeyTime = None
-                    config.extend(keys)
-                if config[0] == "RELEASE":
-                    config = ['key', 'Right']
-                if config[0] == "mousemove_relative":
-                    mousestep = min(repeat, 10)
-                    config[2] = str(int(config[2]) * mousestep ** 2)
-                    config[3] = str(int(config[3]) * mousestep ** 2)
-                cmd = ["xdotool"] + config
-                xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
-                subprocess.check_call(cmd)
+                if isReleasing and releaseKeyTime is not None:
+                    # Deselect the current multi-tap character.
+                    xbmc.log('Executing xdotool for multi-tap release', xbmc.LOGDEBUG)
+                    subprocess.check_call(['xdotool', 'key', '--clearmodifiers', 'Right'])
+                releaseKeyTime = nextReleaseKeyTime
+
+                if inputs is not None:
+                    cmd = ["xdotool"] + inputs
+                    xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
+                    subprocess.check_call(cmd)
 
 def showSite(url, stopPlayback, kiosk, userAgent):
     chrome_path = ""
