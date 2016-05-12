@@ -385,7 +385,7 @@ def launchBrowser(fullUrl, creationflags):
                     current = keys[repeatIndex % len(keys)]
                     config.append(current)
                     config.append('Shift+Left')
-                    subprocess.Popen(["xdotool"] + config)
+                    subprocess.check_call(["xdotool"] + config)
 
                     releaseKeyTime = datetime.datetime.now() + RELEASE_KEY_DELAY
                     break
@@ -403,7 +403,7 @@ def launchBrowser(fullUrl, creationflags):
                     config[2] = str(int(config[2]) * mousestep ** 2)
                     config[3] = str(int(config[3]) * mousestep ** 2)
                 #print >>log, ["xdotool"] + config
-                subprocess.Popen(["xdotool"] + config)
+                subprocess.check_call(["xdotool"] + config)
                 #log.flush()
 
 def showSite(url, stopPlayback, kiosk, userAgent):
