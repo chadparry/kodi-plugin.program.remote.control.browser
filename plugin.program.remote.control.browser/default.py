@@ -1,13 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-import alsaaudio
 import collections
 import contextlib
 import datetime
 import json
 import os
-import psutil
-import pylirc
 import re
 import select
 import signal
@@ -21,6 +18,18 @@ import xbmcplugin
 import xbmcgui
 import xbmcaddon
 
+try:
+    import alsaaudio
+except ImportError:
+    alsaaudio = None
+try:
+    import psutil
+except ImportError:
+    psutil = None
+try:
+    import pylirc
+except ImportError:
+    pylirc = None
 
 addon = xbmcaddon.Addon()
 pluginhandle = int(sys.argv[1])
@@ -56,6 +65,8 @@ vimeoUrl = "http://www.vimeo.com/couchmode"
 PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
 
 def getProcessTree(parent):
+    if psutil is None:
+        return [parent]
     try:
         process = psutil.Process(parent)
         processes = [process] + process.get_children(recursive=True)
@@ -73,6 +84,9 @@ def suspendXbmcLirc():
 
 @contextlib.contextmanager
 def runPylirc(name, configuration):
+    if pylirc is None:
+        yield
+        return
     fd = pylirc.init(name, configuration)
     if not fd:
         raise RuntimeError('Failed to initialize pylirc')
@@ -168,7 +182,8 @@ class JsonRpcError(RuntimeError):
 class KodiMixer:
     """Mixer that integrates tightly with Kodi volume controls"""
     def __init__(self):
-        self.delegate = alsaaudio.Mixer()
+        if alsaaudio is not None:
+            self.delegate = alsaaudio.Mixer()
         self.lastRpcId = 0
         try:
             result = self.executeJSONRPC('Application.GetProperties',
@@ -180,14 +195,16 @@ class KodiMixer:
             self.muted = False
             self.volume = VOLUME_MAX
     def __enter__(self):
-        self.original = self.delegate.getvolume()
+        if alsaaudio is not None:
+            self.original = self.delegate.getvolume()
         # Match the current volume to Kodi's last volume.
         self.realizeVolume()
         return self
     def __exit__(self, exc_type, exc_value, traceback):
         # Restore the master volume to its original level.
-        for (channel, volume) in enumerate(self.original):
-            self.delegate.setvolume(volume, channel)
+        if alsaaudio is not None:
+            for (channel, volume) in enumerate(self.original):
+                self.delegate.setvolume(volume, channel)
     def getNextRpcId(self):
         self.lastRpcId = self.lastRpcId + 1
         return self.lastRpcId
@@ -205,10 +222,11 @@ class KodiMixer:
         # Muting the Master volume and then unmuting it is not a symmetric
         # operation, because other controls end up muted. So a mute needs to be
         # simulated by setting the volume level to zero.
-        if self.muted:
-            self.delegate.setvolume(0)
-        else:
-            self.delegate.setvolume(self.volume)
+        if alsaaudio is not None:
+            if self.muted:
+                self.delegate.setvolume(0)
+            else:
+                self.delegate.setvolume(self.volume)
     def toggleMute(self):
         try:
             result = self.executeJSONRPC('Application.SetMute', {'mute': 'toggle'})
@@ -225,7 +243,8 @@ class KodiMixer:
         except (JsonRpcError, ValueError) as e:
             xbmc.log('Could not increase volume: ' + str(e))
             self.volume = min(self.volume + DEFAULT_VOLUME_STEP, VOLUME_MAX)
-        self.delegate.setvolume(self.volume)
+        if alsaaudio is not None:
+            self.delegate.setvolume(self.volume)
     def decrementVolume(self):
         try:
             result = self.executeJSONRPC('Application.SetVolume', {'volume': 'decrement'})
@@ -233,7 +252,7 @@ class KodiMixer:
         except (JsonRpcError, ValueError) as e:
             xbmc.log('Could not decrease volume: ' + str(e))
             self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
-        if not self.muted:
+        if alsaaudio is not None and not self.muted:
             self.delegate.setvolume(self.volume)
 
 
@@ -386,11 +405,14 @@ def launchBrowser(fullUrl, creationflags):
                 timeout = None
             else:
                 timeout = max((releaseKeyTime - datetime.datetime.now()).total_seconds(), 0)
-            (rlist, wlist, xlist) = select.select([lircFd, browserExitFd], [], [], timeout)
+            polling = [browserExitFd]
+            if lircFd is not None:
+                polling.append(lircFd)
+            (rlist, wlist, xlist) = select.select(polling, [], [], timeout)
             if browserExitFd in rlist:
                 # The browser exited prematurely.
                 break
-            if lircFd in rlist:
+            if lircFd is not None and lircFd in rlist:
                 buttons = pylirc.nextcode(True)
             else:
                 buttons = None
