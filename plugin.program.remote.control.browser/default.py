@@ -4,6 +4,7 @@ import alsaaudio
 import collections
 import contextlib
 import datetime
+import json
 import os
 import psutil
 import pylirc
@@ -46,8 +47,7 @@ if not os.path.isdir(siteFolder):
 
 VOLUME_MIN = 0L
 VOLUME_MAX = 100L
-VOLUME_DEFAULT = 50L
-VOLUME_STEP = 2L
+DEFAULT_VOLUME_STEP = 1L
 RELEASE_KEY_DELAY = datetime.timedelta(seconds=1)
 BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
 youtubeUrl = "http://www.youtube.com/leanback"
@@ -161,6 +161,80 @@ def raiseBrowser(pid):
         proc.wait()
         if activator is not None:
             activator.join()
+
+class JsonRpcError(RuntimeError):
+    pass
+
+class KodiMixer:
+    """Mixer that integrates tightly with Kodi volume controls"""
+    def __init__(self):
+        self.delegate = alsaaudio.Mixer()
+        self.lastRpcId = 0
+        try:
+            result = self.executeJSONRPC('Application.GetProperties',
+                {'properties': ['muted', 'volume']})
+            self.muted = bool(result['muted'])
+            self.volume = int(result['volume'])
+        except (JsonRpcError, KeyError, ValueError) as e:
+            xbmc.log('Could not retrieve current volume: ' + str(e))
+            self.muted = False
+            self.volume = VOLUME_MAX
+    def __enter__(self):
+        self.original = self.delegate.getvolume()
+        # Match the current volume to Kodi's last volume.
+        self.realizeVolume()
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        # Restore the master volume to its original level.
+        for (channel, volume) in enumerate(self.original):
+            self.delegate.setvolume(volume, channel)
+    def getNextRpcId(self):
+        self.lastRpcId = self.lastRpcId + 1
+        return self.lastRpcId
+    def executeJSONRPC(self, method, params):
+        response = xbmc.executeJSONRPC(json.dumps({
+            'jsonrpc': '2.0',
+            'method': method,
+            'params': params,
+            'id': self.getNextRpcId()}))
+        try:
+            return json.loads(response)['result']
+        except (KeyError, ValueError):
+            raise JsonRpcError('Invalid JSON RPC response: ' + repr(response))
+    def realizeVolume(self):
+        # Muting the Master volume and then unmuting it is not a symmetric
+        # operation, because other controls end up muted. So a mute needs to be
+        # simulated by setting the volume level to zero.
+        if self.muted:
+            self.delegate.setvolume(0)
+        else:
+            self.delegate.setvolume(self.volume)
+    def toggleMute(self):
+        try:
+            result = self.executeJSONRPC('Application.SetMute', {'mute': 'toggle'})
+            self.muted = bool(result)
+        except (JsonRpcError, ValueError) as e:
+            xbmc.log('Could not toggle mute: ' + str(e))
+            self.muted = not self.muted
+        self.realizeVolume()
+    def incrementVolume(self):
+        self.muted = False
+        try:
+            result = self.executeJSONRPC('Application.SetVolume', {'volume': 'increment'})
+            self.volume = int(result)
+        except (JsonRpcError, ValueError) as e:
+            xbmc.log('Could not increase volume: ' + str(e))
+            self.volume = min(self.volume + DEFAULT_VOLUME_STEP, VOLUME_MAX)
+        self.delegate.setvolume(self.volume)
+    def decrementVolume(self):
+        try:
+            result = self.executeJSONRPC('Application.SetVolume', {'volume': 'decrement'})
+            self.volume = int(result)
+        except (JsonRpcError, ValueError) as e:
+            xbmc.log('Could not decrease volume: ' + str(e))
+            self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
+        if not self.muted:
+            self.delegate.setvolume(self.volume)
 
 
 def index():
@@ -300,12 +374,10 @@ def launchBrowser(fullUrl, creationflags):
     with (
             suspendXbmcLirc()), (
             runPylirc("browser", lircConfig)) as lircFd, (
+            KodiMixer()) as mixer, (
             runBrowser(fullUrl, creationflags)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid)):
 
-        mixer = alsaaudio.Mixer()
-        lastvolume = mixer.getvolume()[0]
-        mute = lastvolume == 0
         releaseKeyTime = None
         repeatKeys = None
         isExiting = False
@@ -335,27 +407,11 @@ def launchBrowser(fullUrl, creationflags):
                 inputs = None
 
                 if command == 'VOLUME_UP':
-                    if mute:
-                        mute = False
-                        volume = lastvolume
-                    else:
-                        volume = mixer.getvolume()[0]
-                    volume = min(volume + VOLUME_STEP, VOLUME_MAX)
-                    mixer.setvolume(volume)
+                    mixer.incrementVolume()
                 elif command == 'VOLUME_DOWN':
-                    volume = mixer.getvolume()[0]
-                    volume = max(volume - VOLUME_STEP, VOLUME_MIN)
-                    mixer.setvolume(volume)
+                    mixer.decrementVolume()
                 elif command == 'MUTE':
-                    mute = not mute
-                    if mute:
-                        volume = VOLUME_MIN
-                        lastvolume = mixer.getvolume()[0]
-                    elif lastvolume == VOLUME_MIN:
-                        volume = VOLUME_DEFAULT
-                    else:
-                        volume = lastvolume
-                    mixer.setvolume(volume)
+                    mixer.toggleMute()
                 elif command == 'MULTITAP':
                     if releaseKeyTime is not None and repeatKeys == args:
                         repeatIndex += 1
