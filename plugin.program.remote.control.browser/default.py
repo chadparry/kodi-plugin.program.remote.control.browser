@@ -264,8 +264,6 @@ def index():
             title = ""
             url = ""
             thumb = ""
-            kiosk = "yes"
-            stopPlayback = "no"
             for line in fh.readlines():
                 entry = line[:line.find("=")]
                 content = line[line.find("=")+1:]
@@ -275,12 +273,8 @@ def index():
                     url = content.strip()
                 elif entry == "thumb":
                     thumb = content.strip()
-                elif entry == "kiosk":
-                    kiosk = content.strip()
-                elif entry == "stopPlayback":
-                    stopPlayback = content.strip()
             fh.close()
-            addSiteDir(title, url, 'showSite', thumb, stopPlayback, kiosk)
+            addSiteDir(title, url, 'showSite', thumb)
     addDir("[ Vimeo Couchmode ]", vimeoUrl, 'showSite', os.path.join(addonPath, "vimeo.png"), "yes", "yes")
     addDir("[ Youtube Leanback ]", youtubeUrl, 'showSite', os.path.join(addonPath, "youtube.png"), "yes", "yes")
     addDir("[B]- "+translation(30001)+"[/B]", "", 'addSite', "")
@@ -290,7 +284,7 @@ def index():
 def addSite(site="", title=""):
     if site:
         filename = getFileName(title)
-        content = "title="+title+"\nurl="+site+"\nthumb=DefaultFolder.png\nstopPlayback=no\nkiosk=yes"
+        content = "title="+title+"\nurl="+site+"\nthumb=DefaultFolder.png"
         fh = open(os.path.join(siteFolder, filename+".link"), 'w')
         fh.write(content)
         fh.close()
@@ -303,18 +297,10 @@ def addSite(site="", title=""):
             keyboard.doModal()
             if keyboard.isConfirmed() and keyboard.getText():
                 url = keyboard.getText()
-                keyboard = xbmc.Keyboard('no', translation(30009))
-                keyboard.doModal()
-                if keyboard.isConfirmed() and keyboard.getText():
-                    stopPlayback = keyboard.getText()
-                    keyboard = xbmc.Keyboard('yes', translation(30016))
-                    keyboard.doModal()
-                    if keyboard.isConfirmed() and keyboard.getText():
-                        kiosk = keyboard.getText()
-                        content = "title="+title+"\nurl="+url+"\nthumb=DefaultFolder.png\nstopPlayback="+stopPlayback+"\nkiosk="+kiosk
-                        fh = open(os.path.join(siteFolder, getFileName(title)+".link"), 'w')
-                        fh.write(content)
-                        fh.close()
+                content = "title="+title+"\nurl="+url+"\nthumb=DefaultFolder.png"
+                fh = open(os.path.join(siteFolder, getFileName(title)+".link"), 'w')
+                fh.write(content)
+                fh.close()
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -322,46 +308,10 @@ def getFileName(title):
     return (''.join(c for c in unicode(title, 'utf-8') if c not in '/\\:?"*|<>')).strip()
 
 
-def getFullPath(path, url, useKiosk, userAgent):
+def getFullPath(path, url, userAgent):
     profile = ""
     if useOwnProfile:
         profile = '--user-data-dir='+profileFolder
-        if useKiosk=="yes" and osLinux:
-            # On Linux, chrome kiosk leavs black bars on side/bottom of screen due to an incorrect working size.
-            # We can fix the preferences directly
-            # cat $prefs |perl -pe "s/\"work_area_bottom.*/\"work_area_bottom\": $(xrandr | grep \* | cut -d' ' -f4 | cut -d'x' -f2),/" > $prefs
-            # cat $prefs |perl -pe "s/\"work_area_right.*/\"work_area_right\": $(xrandr | grep \* | cut -d' ' -f4 | cut -d'x' -f1),/" > $prefs
-            try:
-                width, height = 0,0
-                xrandr = subprocess.check_output(['xrandr']).split('\n')
-                for line in xrandr:
-                    match = re.compile('([0-9]+)x([0-9]+).+?\*.+?').findall(line)
-                    if match:
-                        width = int(match[0][0])
-                        height = int(match[0][1])
-                        break
-                prefs = os.path.join(profileFolder, 'Default', 'Preferences')
-                # space for non existing controls. Not sure why it needs it, but it does on my setup
-                top_margin = 30
-
-                with open(prefs, "rb+") as prefsfile:
-                    import json
-                    prefsdata = json.load(prefsfile)
-                    prefs_browser = prefsdata.get('browser', {})
-                    prefs_window_placement = prefs_browser.get('window_placement', {})
-                    prefs_window_placement['always_on_top'] = True
-                    prefs_window_placement['top'] = top_margin
-                    prefs_window_placement['bottom'] = height-top_margin
-                    prefs_window_placement['work_area_bottom'] = height
-                    prefs_window_placement['work_area_right'] = width
-                    prefsdata['browser'] = prefs_browser
-                    prefsdata['browser']['window_placement'] = prefs_window_placement
-                    prefsfile.seek(0)
-                    prefsfile.truncate(0)
-                    json.dump(prefsdata, prefsfile, indent=4, separators=(',', ': '))
-
-            except:
-                xbmc.log("Can't update chrome resolution", xbmc.LOGINFO)
 
     # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
     # to redirect to our desired location.
@@ -369,9 +319,7 @@ def getFullPath(path, url, useKiosk, userAgent):
     with open(black_background, "w") as launch:
         launch.write('<html><body style="background:black"><script>window.location.href = "%s";</script></body></html>' % url)
 
-    kiosk = ""
-    if useKiosk=="yes":
-        kiosk = '--kiosk'
+    kiosk = '--kiosk'
     if userAgent:
         userAgent = '--user-agent="'+userAgent+'"'
     
@@ -475,11 +423,10 @@ def launchBrowser(fullUrl, creationflags):
                     xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
                     subprocess.check_call(cmd)
 
-def showSite(url, stopPlayback, kiosk, userAgent):
+def showSite(url, userAgent):
+    xbmc.Player().stop()
     chrome_path = ""
     creationflags = 0
-    if stopPlayback == "yes":
-        xbmc.Player().stop()
     if osWin:
         creationflags = 0x00000008 # DETACHED_PROCESS https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
         path = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
@@ -504,7 +451,7 @@ def showSite(url, stopPlayback, kiosk, userAgent):
             chrome_path = path
 
     if chrome_path:
-        fullUrl = getFullPath(chrome_path, url, kiosk, userAgent)
+        fullUrl = getFullPath(chrome_path, url, userAgent)
         launchBrowser(fullUrl, creationflags)
     else:
         xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
@@ -522,9 +469,7 @@ def editSite(title):
     fh = open(file, 'r')
     title = ""
     url = ""
-    kiosk = "yes"
     thumb = "DefaultFolder.png"
-    stopPlayback = "no"
     for line in fh.readlines():
         entry = line[:line.find("=")]
         content = line[line.find("=")+1:]
@@ -532,12 +477,8 @@ def editSite(title):
             title = content.strip()
         elif entry == "url":
             url = content.strip()
-        elif entry == "kiosk":
-            kiosk = content.strip()
         elif entry == "thumb":
             thumb = content.strip()
-        elif entry == "stopPlayback":
-            stopPlayback = content.strip()
     fh.close()
 
     oldTitle = title
@@ -549,20 +490,12 @@ def editSite(title):
         keyboard.doModal()
         if keyboard.isConfirmed() and keyboard.getText():
             url = keyboard.getText()
-            keyboard = xbmc.Keyboard(stopPlayback, translation(30009))
-            keyboard.doModal()
-            if keyboard.isConfirmed() and keyboard.getText():
-                stopPlayback = keyboard.getText()
-                keyboard = xbmc.Keyboard(kiosk, translation(30016))
-                keyboard.doModal()
-                if keyboard.isConfirmed() and keyboard.getText():
-                    kiosk = keyboard.getText()
-                    content = "title="+title+"\nurl="+url+"\nthumb="+thumb+"\nstopPlayback="+stopPlayback+"\nkiosk="+kiosk
-                    fh = open(os.path.join(siteFolder, getFileName(title)+".link"), 'w')
-                    fh.write(content)
-                    fh.close()
-                    if title != oldTitle:
-                        os.remove(os.path.join(siteFolder, filenameOld+".link"))
+            content = "title="+title+"\nurl="+url+"\nthumb="+thumb
+            fh = open(os.path.join(siteFolder, getFileName(title)+".link"), 'w')
+            fh.write(content)
+            fh.close()
+            if title != oldTitle:
+                os.remove(os.path.join(siteFolder, filenameOld+".link"))
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -577,8 +510,8 @@ def parameters_string_to_dict(parameters):
     return paramDict
 
 
-def addDir(name, url, mode, iconimage, stopPlayback="", kiosk=""):
-    u = sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+urllib.quote_plus(mode)+"&stopPlayback="+urllib.quote_plus(stopPlayback)+"&kiosk="+urllib.quote_plus(kiosk)
+def addDir(name, url, mode, iconimage):
+    u = sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+urllib.quote_plus(mode)
     ok = True
     liz = xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=iconimage)
     liz.setInfo(type="Video", infoLabels={"Title": name})
@@ -586,8 +519,8 @@ def addDir(name, url, mode, iconimage, stopPlayback="", kiosk=""):
     return ok
 
 
-def addSiteDir(name, url, mode, iconimage, stopPlayback, kiosk):
-    u = sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+urllib.quote_plus(mode)+"&stopPlayback="+urllib.quote_plus(stopPlayback)+"&kiosk="+urllib.quote_plus(kiosk)
+def addSiteDir(name, url, mode, iconimage):
+    u = sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+urllib.quote_plus(mode)
     ok = True
     liz = xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=iconimage)
     liz.setInfo(type="Video", infoLabels={"Title": name})
@@ -599,8 +532,6 @@ params = parameters_string_to_dict(sys.argv[2])
 mode = urllib.unquote_plus(params.get('mode', ''))
 name = urllib.unquote_plus(params.get('name', ''))
 url = urllib.unquote_plus(params.get('url', ''))
-stopPlayback = urllib.unquote_plus(params.get('stopPlayback', 'no'))
-kiosk = urllib.unquote_plus(params.get('kiosk', 'yes'))
 userAgent = urllib.unquote_plus(params.get('userAgent', ''))
 profileFolderParam = urllib.unquote_plus(params.get('profileFolder', ''))
 if profileFolderParam:
@@ -611,7 +542,7 @@ if profileFolderParam:
 if mode == 'addSite':
     addSite()
 elif mode == 'showSite':
-    showSite(url, stopPlayback, kiosk, userAgent)
+    showSite(url, userAgent)
 elif mode == 'removeSite':
     removeSite(url)
 elif mode == 'editSite':
