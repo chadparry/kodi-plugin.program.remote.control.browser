@@ -7,6 +7,7 @@ import json
 import os
 import re
 import select
+import shlex
 import signal
 import socket
 import subprocess
@@ -14,10 +15,13 @@ import sys
 import threading
 import time
 import urllib
+import xbmc
 import xbmcplugin
 import xbmcgui
 import xbmcaddon
 
+# If any of these packages are missing, the script will attempt to proceed
+# without those features.
 try:
     import alsaaudio
 except ImportError:
@@ -36,21 +40,13 @@ pluginhandle = int(sys.argv[1])
 addonID = addon.getAddonInfo('id')
 addonPath = addon.getAddonInfo('path')
 translation = addon.getLocalizedString
-osWin = xbmc.getCondVisibility('system.platform.windows')
-osOsx = xbmc.getCondVisibility('system.platform.osx')
-osLinux = xbmc.getCondVisibility('system.platform.linux')
-useOwnProfile = addon.getSetting("useOwnProfile") == "true"
-useCustomPath = addon.getSetting("useCustomPath") == "true"
-customPath = xbmc.translatePath(addon.getSetting("customPath"))
+xdotoolPath = addon.getSetting("xdotoolPath")
 
 userDataFolder = xbmc.translatePath("special://profile/addon_data/"+addonID)
-profileFolder = os.path.join(userDataFolder, 'profile')
 siteFolder = os.path.join(userDataFolder, 'sites')
 
 if not os.path.isdir(userDataFolder):
     os.mkdir(userDataFolder)
-if not os.path.isdir(profileFolder):
-    os.mkdir(profileFolder)
 if not os.path.isdir(siteFolder):
     os.mkdir(siteFolder)
 
@@ -107,12 +103,18 @@ def killBrowser(proc, sig):
             pass
 
 @contextlib.contextmanager
-def runBrowser(args, creationflags):
+def runBrowser(browserCmd):
     (sink, source) = socket.socketpair()
     with contextlib.closing(sink), contextlib.closing(source):
         waiter = None
         try:
-            proc = subprocess.Popen(args, creationflags=creationflags, close_fds=True)
+            if xbmc.getCondVisibility('system.platform.windows'):
+                # On Windows, the Popen will block unless close_fds is True and
+                # creationflags is DETACHED_PROCESS.
+                creationflags = 0x00000008
+            else:
+                creationflags = 0
+            proc = subprocess.Popen(browserCmd, creationflags=creationflags, close_fds=True)
             try:
                 # Monitor the browser and kick the socket when it exits.
                 waiterStarting = threading.Thread(target=monitorProcess, args=(proc, source))
@@ -153,13 +155,13 @@ def activateWindow(cmd, proc, aborting):
     for wid in wids:
         if aborting.is_set():
             return
-        subprocess.call(['xdotool', 'WindowActivate', wid])
+        subprocess.call([xdotoolPath, 'WindowActivate', wid])
 
 @contextlib.contextmanager
 def raiseBrowser(pid):
     activator = None
     # With the "sync" flag, the command could block indefinitely.
-    cmd = ['xdotool', 'search', '--sync', '--onlyvisible', '--pid', str(pid)]
+    cmd = [xdotoolPath, 'search', '--sync', '--onlyvisible', '--pid', str(pid)]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
     try:
         aborting = threading.Event()
@@ -275,8 +277,8 @@ def index():
                     thumb = content.strip()
             fh.close()
             addSiteDir(title, url, 'showSite', thumb)
-    addDir("[ Vimeo Couchmode ]", vimeoUrl, 'showSite', os.path.join(addonPath, "vimeo.png"), "yes", "yes")
-    addDir("[ Youtube Leanback ]", youtubeUrl, 'showSite', os.path.join(addonPath, "youtube.png"), "yes", "yes")
+    addDir("[ Vimeo Couchmode ]", vimeoUrl, 'showSite', os.path.join(addonPath, "vimeo.png"))
+    addDir("[ Youtube Leanback ]", youtubeUrl, 'showSite', os.path.join(addonPath, "youtube.png"))
     addDir("[B]- "+translation(30001)+"[/B]", "", 'addSite', "")
     xbmcplugin.endOfDirectory(pluginhandle)
 
@@ -308,41 +310,13 @@ def getFileName(title):
     return (''.join(c for c in unicode(title, 'utf-8') if c not in '/\\:?"*|<>')).strip()
 
 
-def getFullPath(path, url, userAgent):
-    profile = ""
-    if useOwnProfile:
-        profile = '--user-data-dir='+profileFolder
-
-    # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
-    # to redirect to our desired location.
-    black_background = os.path.join(userDataFolder, "black.html")
-    with open(black_background, "w") as launch:
-        launch.write('<html><body style="background:black"><script>window.location.href = "%s";</script></body></html>' % url)
-
-    kiosk = '--kiosk'
-    if userAgent:
-        userAgent = '--user-agent="'+userAgent+'"'
-    
-    #fullPath = '"'+path+'" '+profile+userAgent+'--start-maximized --disable-translate --disable-new-tab-first-run --no-default-browser-check --no-first-run '+kiosk+'"'+black_background+'"'
-    fullPath = [path, profile, userAgent, '--start-maximized','--disable-translate','--disable-new-tab-first-run','--no-default-browser-check','--no-first-run', kiosk, black_background]
-    for idx in range(0,len(fullPath))[::-1]:
-        if not fullPath[idx]:
-            del fullPath[idx]
-
-    strpath = ""
-    for arg in fullPath:
-        strpath += " " + arg
-    xbmc.log('Full Path: ' + str(strpath), xbmc.LOGDEBUG)
-    return fullPath
-
-
-def launchBrowser(fullUrl, creationflags):
+def launchBrowser(browserCmd):
     lircConfig = os.path.join(addonPath, "resources/data/browser.lirc")
     with (
             suspendXbmcLirc()), (
             runPylirc("browser", lircConfig)) as lircFd, (
             KodiMixer()) as mixer, (
-            runBrowser(fullUrl, creationflags)) as (browser, browserExitFd), (
+            runBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid)):
 
         releaseKeyTime = None
@@ -415,47 +389,34 @@ def launchBrowser(fullUrl, creationflags):
                 if isReleasing and releaseKeyTime is not None:
                     # Deselect the current multi-tap character.
                     xbmc.log('Executing xdotool for multi-tap release', xbmc.LOGDEBUG)
-                    subprocess.check_call(['xdotool', 'key', '--clearmodifiers', 'Right'])
+                    subprocess.check_call([xdotoolPath, 'key', '--clearmodifiers', 'Right'])
                 releaseKeyTime = nextReleaseKeyTime
 
                 if inputs is not None:
-                    cmd = ["xdotool"] + inputs
+                    cmd = [xdotoolPath] + inputs
                     xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
                     subprocess.check_call(cmd)
 
-def showSite(url, userAgent):
+def showSite(url):
     xbmc.Player().stop()
-    chrome_path = ""
-    creationflags = 0
-    if osWin:
-        creationflags = 0x00000008 # DETACHED_PROCESS https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
-        path = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-        path64 = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-        if useCustomPath and os.path.exists(customPath):
-            chrome_path = customPath
-        elif os.path.exists(path):
-            chrome_path = path
-        elif os.path.exists(path64):
-            chrome_path = path64
-    elif osOsx:
-        path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        if useCustomPath and os.path.exists(customPath):
-            chrome_path = customPath
-        elif os.path.exists(path):
-            chrome_path = path
-    elif osLinux:
-        path = "/usr/bin/google-chrome"
-        if useCustomPath and os.path.exists(customPath):
-            chrome_path = customPath
-        elif os.path.exists(path):
-            chrome_path = path
 
-    if chrome_path:
-        fullUrl = getFullPath(chrome_path, url, userAgent)
-        launchBrowser(fullUrl, creationflags)
-    else:
+    browserPath = addon.getSetting("browserPath")
+    browserArgs = addon.getSetting("browserArgs")
+
+    if not browserPath or not os.path.exists(browserPath):
         xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
         addon.openSettings()
+        return
+
+    # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
+    # to redirect to our desired location.
+    blackPath = os.path.join(userDataFolder, "black.html")
+    blackUrl = 'file://' + urllib.quote(blackPath)
+    with open(blackPath, "w") as blackFile:
+        blackFile.write('<html><body style="background:black"><script>window.location.href = "%s";</script></body></html>' % url)
+
+    browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
+    launchBrowser(browserCmd)
 
 
 def removeSite(title):
@@ -532,21 +493,15 @@ params = parameters_string_to_dict(sys.argv[2])
 mode = urllib.unquote_plus(params.get('mode', ''))
 name = urllib.unquote_plus(params.get('name', ''))
 url = urllib.unquote_plus(params.get('url', ''))
-userAgent = urllib.unquote_plus(params.get('userAgent', ''))
-profileFolderParam = urllib.unquote_plus(params.get('profileFolder', ''))
-if profileFolderParam:
-    useOwnProfile = True
-    profileFolder = profileFolderParam
 
 
 if mode == 'addSite':
     addSite()
 elif mode == 'showSite':
-    showSite(url, userAgent)
+    showSite(url)
 elif mode == 'removeSite':
     removeSite(url)
 elif mode == 'editSite':
     editSite(url)
 else:
     index()
-

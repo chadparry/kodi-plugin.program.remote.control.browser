@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <addon id="plugin.program.remote.control.browser" name="Remote Control Browser" version="0.1.0" provider-name="Chad Parry">
     <requires>
         <import addon="xbmc.python" version="2.1.0"/>
@@ -7,8 +7,9 @@
     <extension point="xbmc.python.pluginsource" library="default.py">
         <provides>executable</provides>
     </extension>
+    <extension point="xbmc.service" library="service.py" start="login" />
     <extension point="xbmc.addon.metadata">
-        <platform>all</platform>
+        <platform>linux osx</platform>
         <summary lang="en">Browse websites with a remote control</summary>
         <language></language>
         <description lang="en">Browse websites with a remote control</description>
