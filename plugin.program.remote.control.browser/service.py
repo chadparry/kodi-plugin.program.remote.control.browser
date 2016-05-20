@@ -15,6 +15,12 @@ except ImportError:
     xbmc.log('Missing Python package: pyalsaaudio')
     alsaaudio = None
 try:
+    import PIL.Image
+    import PIL.PngImagePlugin
+except ImportError:
+    xbmc.log('Missing Python package: PIL')
+    PIL = None
+try:
     import psutil
 except ImportError:
     xbmc.log('Missing Python package: psutil')
@@ -88,6 +94,10 @@ def generateSettings():
         'type': 'lsep',
         'label': '30024',
         'visible': isWarningVisible(pylirc) })
+    xml.etree.ElementTree.SubElement(dependencies, 'setting', {
+        'type': 'lsep',
+        'label': '30026',
+        'visible': isWarningVisible(PIL) })
 
     tree = xml.etree.ElementTree.ElementTree(root)
     addonPath = addon.getAddonInfo('path')

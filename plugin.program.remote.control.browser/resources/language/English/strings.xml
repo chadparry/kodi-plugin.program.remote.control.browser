@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <strings>
-  <string id="30001">Add Website</string>
-  <string id="30002">Remove Website</string>
+  <string id="30001">Add Bookmark</string>
+  <string id="30002">Remove Bookmark</string>
   <string id="30003">Title</string>
   <string id="30004">URL</string>
   <string id="30005">Browser not found</string>
-  <string id="30006">Edit Website Settings</string>
+  <string id="30006">Edit Bookmark</string>
   <string id="30007">Thumbnail</string>
   <string id="30018">Dependencies</string>
   <string id="30019">Browser Path</string>
@@ -14,4 +14,6 @@
   <string id="30022">Warning: Missing Python package “psutil”</string>
   <string id="30023">Warning: Missing Python package “pyalsaaudio”</string>
   <string id="30024">Warning: Missing Python package “pylirc2”</string>
+  <string id="30025">Launch Bookmark</string>
+  <string id="30026">Warning: Missing Python package “Pillow”</string>
 </strings>

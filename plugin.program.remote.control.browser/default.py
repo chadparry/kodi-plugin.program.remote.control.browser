@@ -1,8 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+import bs4
 import collections
 import contextlib
 import datetime
+import io
 import json
 import os
 import re
@@ -15,10 +17,14 @@ import sys
 import threading
 import time
 import urllib
+import urllib2
+import urlparse
+import uuid
 import xbmc
 import xbmcplugin
 import xbmcgui
 import xbmcaddon
+import xml.etree.ElementTree
 
 # If any of these packages are missing, the script will attempt to proceed
 # without those features.
@@ -26,6 +32,11 @@ try:
     import alsaaudio
 except ImportError:
     alsaaudio = None
+try:
+    import PIL.Image
+    import PIL.PngImagePlugin
+except ImportError:
+    PIL = None
 try:
     import psutil
 except ImportError:
@@ -36,6 +47,7 @@ except ImportError:
     pylirc = None
 
 addon = xbmcaddon.Addon()
+pluginPath = sys.argv[0]
 pluginhandle = int(sys.argv[1])
 addonID = addon.getAddonInfo('id')
 addonPath = addon.getAddonInfo('path')
@@ -43,22 +55,21 @@ translation = addon.getLocalizedString
 xdotoolPath = addon.getSetting("xdotoolPath")
 
 userDataFolder = xbmc.translatePath("special://profile/addon_data/"+addonID)
-siteFolder = os.path.join(userDataFolder, 'sites')
+bookmarksPath = os.path.join(userDataFolder, 'bookmarks.xml')
+defaultBookmarksPath = os.path.join(addonPath, 'resources/data/bookmarks.xml')
+thumbsFolder = os.path.join(userDataFolder, 'thumbs')
 
 if not os.path.isdir(userDataFolder):
     os.mkdir(userDataFolder)
-if not os.path.isdir(siteFolder):
-    os.mkdir(siteFolder)
 
 VOLUME_MIN = 0L
 VOLUME_MAX = 100L
 DEFAULT_VOLUME_STEP = 1L
 RELEASE_KEY_DELAY = datetime.timedelta(seconds=1)
 BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
-youtubeUrl = "http://www.youtube.com/leanback"
-vimeoUrl = "http://www.vimeo.com/couchmode"
 
 PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
+FetchedWebpage = collections.namedtuple('FetchedWebpage', ('soup', 'error', 'url'))
 
 def getProcessTree(parent):
     if psutil is None:
@@ -258,59 +269,204 @@ class KodiMixer:
             self.delegate.setvolume(self.volume)
 
 
+def readBookmarks():
+    try:
+        return xml.etree.ElementTree.parse(bookmarksPath)
+    except (IOError, xml.etree.ElementTree.ParseError) as e:
+        xbmc.log('Falling back to default bookmarks: ' + str(e), xbmc.LOGDEBUG)
+        return xml.etree.ElementTree.parse(defaultBookmarksPath)
+
+
+def getBookmarkElement(tree, bookmarkId):
+    if '"' in bookmarkId:
+        raise ValueError('Invalid bookmark: ' + bookmarkId)
+    bookmark = tree.find('bookmark[@id="{}"]'.format(bookmarkId))
+    if bookmark is None:
+        raise ValueError('Unrecognized bookmark ID: ' + bookmarkId)
+    return bookmark
+
+
+def getBookmarkDirectoryItem(bookmarkId, title):
+    url = pluginPath + '?' + urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId})
+    listItem = xbmcgui.ListItem(label=title)
+    thumbnail = os.path.join(thumbsFolder, bookmarkId + '.png')
+    if not os.path.exists(thumbnail):
+        thumbnail = None
+    listItem.setArt({
+        'thumb': thumbnail,
+    })
+    listItem.addContextMenuItems([
+        (translation(30025), 'RunPlugin({})'.format(pluginPath + '?' +
+            urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId}))),
+        (translation(30006), 'RunPlugin({})'.format(pluginPath + '?' +
+            urllib.urlencode({'mode': 'editBookmark', 'id': bookmarkId}))),
+        (translation(30002), 'RunPlugin({})'.format(pluginPath + '?' +
+            urllib.urlencode({'mode': 'removeBookmark', 'id': bookmarkId}))),
+    ])
+    # Kodi lets addons render their own folders.
+    isFolder = True
+    return (url, listItem, isFolder)
+
+
 def index():
-    files = os.listdir(siteFolder)
-    for file in files:
-        if file.endswith(".link"):
-            fh = open(os.path.join(siteFolder, file), 'r')
-            title = ""
-            url = ""
-            thumb = ""
-            for line in fh.readlines():
-                entry = line[:line.find("=")]
-                content = line[line.find("=")+1:]
-                if entry == "title":
-                    title = content.strip()
-                elif entry == "url":
-                    url = content.strip()
-                elif entry == "thumb":
-                    thumb = content.strip()
-            fh.close()
-            addSiteDir(title, url, 'showSite', thumb)
-    addDir("[ Vimeo Couchmode ]", vimeoUrl, 'showSite', os.path.join(addonPath, "vimeo.png"))
-    addDir("[ Youtube Leanback ]", youtubeUrl, 'showSite', os.path.join(addonPath, "youtube.png"))
-    addDir("[B]- "+translation(30001)+"[/B]", "", 'addSite', "")
+    tree = readBookmarks()
+    items = [getBookmarkDirectoryItem(
+        bookmark.get('id'),
+        bookmark.get('title'))
+        for bookmark in tree.iter('bookmark')]
+
+    url = pluginPath + '?' + urllib.urlencode({'mode': 'addBookmark'})
+    listItem = xbmcgui.ListItem('[B]{}[/B]'.format(translation(30001)))
+    listItem.setArt({
+        'thumb': 'DefaultFile.png',
+    })
+    isFolder = True
+    items.append((url, listItem, isFolder))
+
+    success = xbmcplugin.addDirectoryItems(handle=pluginhandle, items=items, totalItems=len(items))
+    if not success:
+        raise RuntimeError('Failed addDirectoryItem')
     xbmcplugin.endOfDirectory(pluginhandle)
 
 
-def addSite(site="", title=""):
-    if site:
-        filename = getFileName(title)
-        content = "title="+title+"\nurl="+site+"\nthumb=DefaultFolder.png"
-        fh = open(os.path.join(siteFolder, filename+".link"), 'w')
-        fh.write(content)
-        fh.close()
+def fetchWebpage(url):
+    try:
+        fd = urllib2.urlopen(url)
+        return FetchedWebpage(bs4.BeautifulSoup(fd, 'html.parser'), None, fd.geturl())
+    except (ValueError, IOError) as e:
+        return FetchedWebpage(None, WebpageExtractionError(str(e)), url)
+
+
+class WebpageExtractionError(RuntimeError):
+    pass
+
+
+def inputBookmark(savedBookmarkId=None, defaultUrl='http://', defaultTitle=None):
+    webpage = None
+    keyboard = xbmc.Keyboard(defaultUrl, translation(30004))
+    keyboard.doModal()
+    if not keyboard.isConfirmed():
+        return
+    url = keyboard.getText()
+
+    if defaultTitle is None:
+        if webpage is None:
+            webpage = fetchWebpage(url)
+        try:
+            if webpage.error is not None:
+                raise webpage.error
+            titleElement = webpage.soup.find('title')
+            if titleElement is None:
+                raise WebpageExtractionError('Webpage has no title element')
+            defaultTitle = titleElement.text
+        except WebpageExtractionError as e:
+            xbmc.log('Failed to extract title from bookmarked page: ' + str(e))
+            defaultTitle = urlparse.urlparse(url).netloc
+
+    keyboard = xbmc.Keyboard(defaultTitle, translation(30003))
+    keyboard.doModal()
+    if not keyboard.isConfirmed():
+        return
+    title = keyboard.getText()
+
+    if savedBookmarkId is None:
+        bookmarkId = str(uuid.uuid1())
     else:
-        keyboard = xbmc.Keyboard('', translation(30003))
-        keyboard.doModal()
-        if keyboard.isConfirmed() and keyboard.getText():
-            title = keyboard.getText()
-            keyboard = xbmc.Keyboard('http://', translation(30004))
-            keyboard.doModal()
-            if keyboard.isConfirmed() and keyboard.getText():
-                url = keyboard.getText()
-                content = "title="+title+"\nurl="+url+"\nthumb=DefaultFolder.png"
-                fh = open(os.path.join(siteFolder, getFileName(title)+".link"), 'w')
-                fh.write(content)
-                fh.close()
+        bookmarkId = savedBookmarkId
+
+    if PIL is not None:
+        try:
+            if re.search(r'[^\w-]', bookmarkId):
+                raise ValueError('Invalid bookmark: ' + bookmarkId)
+            if webpage is None:
+                webpage = fetchWebpage(url)
+            if webpage.error is not None:
+                raise webpage.error
+            linkElement = webpage.soup.find('link', rel='shortcut icon')
+            if linkElement is None:
+                raise WebpageExtractionError('Webpage has no favicon element')
+            if 'href' not in link:
+                raise WebpageExtractionError('Webpage has no favicon href')
+            link = linkElement['href']
+            favicon = urllib2.urlopen(link)
+            buffer = io.BytesIO(favicon.read())
+            PIL.Image.open(buffer).verify()
+            # The image must be re-opened after verification.
+            image = PIL.Image.open(buffer)
+            try:
+                os.makedirs(thumbsFolder)
+            except OSError:
+                # The directory may already exist.
+                pass
+            image.save(os.path.join(thumbsFolder, bookmarkId + '.png'),
+                PIL.PngImagePlugin.PngImageFile.format)
+        except (WebpageExtractionError, ValueError, IOError) as e:
+            # Any previously downloaded thumbnail will be retained.
+            xbmc.log('Failed to retrieve favicon: ' + str(e))
+
+    tree = readBookmarks()
+    if savedBookmarkId is None:
+        xml.etree.ElementTree.SubElement(tree.getroot(), 'bookmark', {
+            'id': bookmarkId,
+            'title': title,
+            'url': url,
+        })
+    else:
+        bookmark = getBookmarkElement(tree, bookmarkId)
+        bookmark.set('title', title)
+        bookmark.set('url', url)
+    tree.write(bookmarksPath)
+
     xbmc.executebuiltin("Container.Refresh")
 
 
-def getFileName(title):
-    return (''.join(c for c in unicode(title, 'utf-8') if c not in '/\\:?"*|<>')).strip()
+def addBookmark():
+    inputBookmark()
 
 
-def launchBrowser(browserCmd):
+def editBookmark(bookmarkId):
+    tree = readBookmarks()
+    bookmark = getBookmarkElement(tree, bookmarkId)
+    inputBookmark(bookmarkId, bookmark.get('url'), bookmark.get('title'))
+
+
+def removeBookmark(bookmarkId):
+    tree = readBookmarks()
+    bookmark = getBookmarkElement(tree, bookmarkId)
+    tree.getroot().remove(bookmark)
+    tree.write(bookmarksPath)
+
+    try:
+        os.remove(os.path.join(thumbsFolder, bookmarkId + '.png'))
+    except OSError:
+        pass
+
+    xbmc.executebuiltin("Container.Refresh")
+
+
+def launchBookmark(bookmarkId):
+    tree = readBookmarks()
+    bookmark = getBookmarkElement(tree, bookmarkId)
+    url = bookmark.get('url')
+    xbmc.Player().stop()
+
+    browserPath = addon.getSetting("browserPath")
+    browserArgs = addon.getSetting("browserArgs")
+
+    if not browserPath or not os.path.exists(browserPath):
+        xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
+        addon.openSettings()
+        return
+
+    # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
+    # to redirect to our desired location.
+    blackPath = os.path.join(userDataFolder, "black.html")
+    blackUrl = 'file://' + urllib.quote(blackPath)
+    with open(blackPath, "w") as blackFile:
+        blackFile.write('<html><body style="background:black"><script>window.location.href = "%s";</script></body></html>' % url)
+
+    browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
+
     lircConfig = os.path.join(addonPath, "resources/data/browser.lirc")
     with (
             suspendXbmcLirc()), (
@@ -397,68 +553,6 @@ def launchBrowser(browserCmd):
                     xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
                     subprocess.check_call(cmd)
 
-def showSite(url):
-    xbmc.Player().stop()
-
-    browserPath = addon.getSetting("browserPath")
-    browserArgs = addon.getSetting("browserArgs")
-
-    if not browserPath or not os.path.exists(browserPath):
-        xbmc.executebuiltin('XBMC.Notification(Info:,'+str(translation(30005))+'!,5000)')
-        addon.openSettings()
-        return
-
-    # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
-    # to redirect to our desired location.
-    blackPath = os.path.join(userDataFolder, "black.html")
-    blackUrl = 'file://' + urllib.quote(blackPath)
-    with open(blackPath, "w") as blackFile:
-        blackFile.write('<html><body style="background:black"><script>window.location.href = "%s";</script></body></html>' % url)
-
-    browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
-    launchBrowser(browserCmd)
-
-
-def removeSite(title):
-    os.remove(os.path.join(siteFolder, getFileName(title)+".link"))
-    xbmc.executebuiltin("Container.Refresh")
-
-
-def editSite(title):
-    filenameOld = getFileName(title)
-    file = os.path.join(siteFolder, filenameOld+".link")
-    fh = open(file, 'r')
-    title = ""
-    url = ""
-    thumb = "DefaultFolder.png"
-    for line in fh.readlines():
-        entry = line[:line.find("=")]
-        content = line[line.find("=")+1:]
-        if entry == "title":
-            title = content.strip()
-        elif entry == "url":
-            url = content.strip()
-        elif entry == "thumb":
-            thumb = content.strip()
-    fh.close()
-
-    oldTitle = title
-    keyboard = xbmc.Keyboard(title, translation(30003))
-    keyboard.doModal()
-    if keyboard.isConfirmed() and keyboard.getText():
-        title = keyboard.getText()
-        keyboard = xbmc.Keyboard(url, translation(30004))
-        keyboard.doModal()
-        if keyboard.isConfirmed() and keyboard.getText():
-            url = keyboard.getText()
-            content = "title="+title+"\nurl="+url+"\nthumb="+thumb
-            fh = open(os.path.join(siteFolder, getFileName(title)+".link"), 'w')
-            fh.write(content)
-            fh.close()
-            if title != oldTitle:
-                os.remove(os.path.join(siteFolder, filenameOld+".link"))
-    xbmc.executebuiltin("Container.Refresh")
-
 
 def parameters_string_to_dict(parameters):
     paramDict = {}
@@ -471,37 +565,19 @@ def parameters_string_to_dict(parameters):
     return paramDict
 
 
-def addDir(name, url, mode, iconimage):
-    u = sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+urllib.quote_plus(mode)
-    ok = True
-    liz = xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=iconimage)
-    liz.setInfo(type="Video", infoLabels={"Title": name})
-    ok = xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=u, listitem=liz, isFolder=True)
-    return ok
-
-
-def addSiteDir(name, url, mode, iconimage):
-    u = sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+urllib.quote_plus(mode)
-    ok = True
-    liz = xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=iconimage)
-    liz.setInfo(type="Video", infoLabels={"Title": name})
-    liz.addContextMenuItems([(translation(30006), 'RunPlugin(plugin://'+addonID+'/?mode=editSite&url='+urllib.quote_plus(name)+')',), (translation(30002), 'RunPlugin(plugin://'+addonID+'/?mode=removeSite&url='+urllib.quote_plus(name)+')',)])
-    ok = xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=u, listitem=liz, isFolder=True)
-    return ok
-
 params = parameters_string_to_dict(sys.argv[2])
 mode = urllib.unquote_plus(params.get('mode', ''))
 name = urllib.unquote_plus(params.get('name', ''))
-url = urllib.unquote_plus(params.get('url', ''))
+bookmarkId = urllib.unquote_plus(params.get('id', ''))
 
 
-if mode == 'addSite':
-    addSite()
-elif mode == 'showSite':
-    showSite(url)
-elif mode == 'removeSite':
-    removeSite(url)
-elif mode == 'editSite':
-    editSite(url)
+if mode == 'addBookmark':
+    addBookmark()
+elif mode == 'launchBookmark':
+    launchBookmark(bookmarkId)
+elif mode == 'removeBookmark':
+    removeBookmark(bookmarkId)
+elif mode == 'editBookmark':
+    editBookmark(bookmarkId)
 else:
     index()
