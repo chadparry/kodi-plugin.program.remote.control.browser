@@ -384,6 +384,22 @@ def inputBookmark(savedBookmarkId=None, defaultUrl='http://', defaultTitle=None)
     else:
         bookmarkId = savedBookmarkId
 
+    # Save the bookmark metadata.
+    tree = readBookmarks()
+    if savedBookmarkId is None:
+        xml.etree.ElementTree.SubElement(tree.getroot(), 'bookmark', {
+            'id': bookmarkId,
+            'title': title,
+            'url': url,
+        })
+    else:
+        bookmark = getBookmarkElement(tree, bookmarkId)
+        bookmark.set('title', title)
+        bookmark.set('url', url)
+    tree.write(bookmarksPath)
+    xbmc.executebuiltin("Container.Refresh")
+
+    # Try to download an icon for the bookmark.
     try:
         if re.search(r'[^\w-]', bookmarkId):
             raise ValueError('Invalid bookmark: ' + bookmarkId)
@@ -434,27 +450,14 @@ def inputBookmark(savedBookmarkId=None, defaultUrl='http://', defaultTitle=None)
         xbmc.log('Failed to retrieve favicon: ' + str(e))
         thumbId = None
 
-    tree = readBookmarks()
-    if savedBookmarkId is None:
-        xml.etree.ElementTree.SubElement(tree.getroot(), 'bookmark', {
-            'id': bookmarkId,
-            'title': title,
-            'url': url,
-            'thumb': thumbId,
-        })
-    else:
+    if thumbId is not None:
+        tree = readBookmarks()
         bookmark = getBookmarkElement(tree, bookmarkId)
-        bookmark.set('title', title)
-        bookmark.set('url', url)
-        if thumbId is None:
-            removeThumbId = None
-        else:
-            removeThumbId = bookmark.get('thumb')
-            bookmark.set('thumb', thumbId)
-    tree.write(bookmarksPath)
-    removeThumb(removeThumbId)
-
-    xbmc.executebuiltin("Container.Refresh")
+        removeThumbId = bookmark.get('thumb')
+        bookmark.set('thumb', thumbId)
+        tree.write(bookmarksPath)
+        xbmc.executebuiltin("Container.Refresh")
+        removeThumb(removeThumbId)
 
 
 def addBookmark():
