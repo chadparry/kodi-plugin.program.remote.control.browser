@@ -281,15 +281,15 @@ def getBookmarkElement(tree, bookmarkId):
     return bookmark
 
 
-def getBookmarkDirectoryItem(bookmarkId, title):
+def getBookmarkDirectoryItem(bookmarkId, title, thumbId):
     url = pluginPath + '?' + urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId})
     listItem = xbmcgui.ListItem(label=title)
-    thumbnail = os.path.join(thumbsFolder, bookmarkId + '.png')
-    if not os.path.exists(thumbnail):
-        thumbnail = None
-    listItem.setArt({
-        'thumb': thumbnail,
-    })
+    if thumbId is not None:
+        thumbPath = os.path.join(thumbsFolder, thumbId + '.png')
+        if os.path.exists(thumbPath):
+            listItem.setArt({
+                'thumb': thumbPath,
+            })
     listItem.addContextMenuItems([
         (translation(30025), 'RunPlugin({})'.format(pluginPath + '?' +
             urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId}))),
@@ -307,7 +307,8 @@ def index():
     tree = readBookmarks()
     items = [getBookmarkDirectoryItem(
         bookmark.get('id'),
-        bookmark.get('title'))
+        bookmark.get('title'),
+        bookmark.get('thumb'))
         for bookmark in tree.iter('bookmark')]
 
     url = pluginPath + '?' + urllib.urlencode({'mode': 'addBookmark'})
@@ -323,6 +324,13 @@ def index():
         raise RuntimeError('Failed addDirectoryItem')
     xbmcplugin.endOfDirectory(pluginhandle)
 
+
+def removeThumb(thumbId):
+    if thumbId is not None:
+        try:
+            os.remove(os.path.join(thumbsFolder, thumbId + '.png'))
+        except OSError:
+            pass
 
 def fetchWebpage(url):
     try:
@@ -409,11 +417,15 @@ def inputBookmark(savedBookmarkId=None, defaultUrl='http://', defaultTitle=None)
         # The Pillow module needs to be isolated to its own subprocess because
         # many distributions are prone to deadlock.
         retrievePath = os.path.join(addonPath, 'retrieve.py')
-        thumbPath = os.path.join(thumbsFolder, bookmarkId + '.png')
+        # The old thumb ID can't be reused, because then the cached copy of the
+        # old image would never be replaced.
+        thumbId = str(uuid.uuid1())
+        thumbPath = os.path.join(thumbsFolder, thumbId + '.png')
         subprocess.check_call([sys.executable, retrievePath, thumbUrl, thumbPath])
     except (WebpageExtractionError, ValueError, subprocess.CalledProcessError) as e:
         # Any previously downloaded thumbnail will be retained.
         xbmc.log('Failed to retrieve favicon: ' + str(e))
+        thumbId = None
 
     tree = readBookmarks()
     if savedBookmarkId is None:
@@ -421,12 +433,19 @@ def inputBookmark(savedBookmarkId=None, defaultUrl='http://', defaultTitle=None)
             'id': bookmarkId,
             'title': title,
             'url': url,
+            'thumb': thumbId,
         })
     else:
         bookmark = getBookmarkElement(tree, bookmarkId)
         bookmark.set('title', title)
         bookmark.set('url', url)
+        if thumbId is None:
+            removeThumbId = None
+        else:
+            removeThumbId = bookmark.get('thumb')
+            bookmark.set('thumb', thumbId)
     tree.write(bookmarksPath)
+    removeThumb(removeThumbId)
 
     xbmc.executebuiltin("Container.Refresh")
 
@@ -444,13 +463,10 @@ def editBookmark(bookmarkId):
 def removeBookmark(bookmarkId):
     tree = readBookmarks()
     bookmark = getBookmarkElement(tree, bookmarkId)
+    thumbId = bookmark.get('thumb')
     tree.getroot().remove(bookmark)
     tree.write(bookmarksPath)
-
-    try:
-        os.remove(os.path.join(thumbsFolder, bookmarkId + '.png'))
-    except OSError:
-        pass
+    removeThumb(thumbId)
 
     xbmc.executebuiltin("Container.Refresh")
 
