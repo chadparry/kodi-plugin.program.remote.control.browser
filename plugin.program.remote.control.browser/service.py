@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import collections
 import os
+import subprocess
+import sys
 import xbmc
 import xbmcaddon
 import xml.etree.ElementTree
@@ -14,12 +16,6 @@ try:
 except ImportError:
     xbmc.log('Missing Python package: pyalsaaudio')
     alsaaudio = None
-try:
-    import PIL.Image
-    import PIL.PngImagePlugin
-except ImportError:
-    xbmc.log('Missing Python package: PIL')
-    PIL = None
 try:
     import psutil
 except ImportError:
@@ -60,13 +56,24 @@ def getDefaults():
 
 def isWarningVisible(module):
     BOOL_ENCODING = { False: 'false', True: 'true' }
-    return BOOL_ENCODING[module is None]
+    return BOOL_ENCODING[not module]
 
 def generateSettings():
     xbmc.log('Generating default addon settings')
     root = xml.etree.ElementTree.Element('settings')
     dependencies = xml.etree.ElementTree.SubElement(root, 'category', {'label': '30018'})
     defaults = getDefaults()
+
+    # The Pillow module needs to be isolated to its own subprocess because many
+    # distributions are prone to deadlock.
+    addonPath = addon.getAddonInfo('path')
+    importPath = os.path.join(addonPath, 'import.py')
+    try:
+        subprocess.check_call([sys.executable, importPath])
+        pillow = True
+    except subprocess.CalledProcessError:
+        pillow = False
+
     xml.etree.ElementTree.SubElement(dependencies, 'setting', {
         'id': 'browserPath',
         'type': 'executable',
@@ -97,7 +104,7 @@ def generateSettings():
     xml.etree.ElementTree.SubElement(dependencies, 'setting', {
         'type': 'lsep',
         'label': '30026',
-        'visible': isWarningVisible(PIL) })
+        'visible': isWarningVisible(pillow) })
 
     tree = xml.etree.ElementTree.ElementTree(root)
     addonPath = addon.getAddonInfo('path')

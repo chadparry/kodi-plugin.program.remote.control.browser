@@ -33,11 +33,6 @@ try:
 except ImportError:
     alsaaudio = None
 try:
-    import PIL.Image
-    import PIL.PngImagePlugin
-except ImportError:
-    PIL = None
-try:
     import psutil
 except ImportError:
     psutil = None
@@ -374,35 +369,51 @@ def inputBookmark(savedBookmarkId=None, defaultUrl='http://', defaultTitle=None)
     else:
         bookmarkId = savedBookmarkId
 
-    if PIL is not None:
-        try:
-            if re.search(r'[^\w-]', bookmarkId):
-                raise ValueError('Invalid bookmark: ' + bookmarkId)
-            if webpage is None:
-                webpage = fetchWebpage(url)
-            if webpage.error is not None:
-                raise webpage.error
-            linkElement = webpage.soup.find('link', rel='shortcut icon')
-            if linkElement is None:
-                raise WebpageExtractionError('Webpage has no favicon element')
-            if 'href' not in link:
-                raise WebpageExtractionError('Webpage has no favicon href')
+    try:
+        if re.search(r'[^\w-]', bookmarkId):
+            raise ValueError('Invalid bookmark: ' + bookmarkId)
+        if webpage is None:
+            webpage = fetchWebpage(url)
+        if webpage.error is None:
+            # Search for a rel="icon" attribute.
+            linkElements = webpage.soup.findAll('link', rel='icon', href=True)
+            # Prefer the icon with the best quality.
+            linkElement = next(
+                iter(sorted(
+                    linkElements,
+                    key=lambda element: (
+                        # Prefer large images.
+                        reduce(lambda prev, cur: prev * int(cur, 10), re.findall(r'\d+', element['sizes']), 1)
+                            if 'sizes' in element.attrs else 0,
+                        # Prefer PNG format.
+                        'type' in element.attrs and element['type'] == 'image/png',
+                        # Prefer "icon" to "shortcut icon".
+                        element['rel'] == ['icon']),
+                    reverse=True)),
+                None)
+        else:
+            xbmc.log('Failed to open webpage: ' + str(webpage.error))
+            linkElement = None
+        if linkElement is None:
+            link = '/favicon.ico'
+        else:
             link = linkElement['href']
-            favicon = urllib2.urlopen(link)
-            buffer = io.BytesIO(favicon.read())
-            PIL.Image.open(buffer).verify()
-            # The image must be re-opened after verification.
-            image = PIL.Image.open(buffer)
-            try:
-                os.makedirs(thumbsFolder)
-            except OSError:
-                # The directory may already exist.
-                pass
-            image.save(os.path.join(thumbsFolder, bookmarkId + '.png'),
-                PIL.PngImagePlugin.PngImageFile.format)
-        except (WebpageExtractionError, ValueError, IOError) as e:
-            # Any previously downloaded thumbnail will be retained.
-            xbmc.log('Failed to retrieve favicon: ' + str(e))
+        thumbUrl = urlparse.urljoin(webpage.url, link)
+
+        try:
+            os.makedirs(thumbsFolder)
+        except OSError:
+            # The directory may already exist.
+            pass
+
+        # The Pillow module needs to be isolated to its own subprocess because
+        # many distributions are prone to deadlock.
+        retrievePath = os.path.join(addonPath, 'retrieve.py')
+        thumbPath = os.path.join(thumbsFolder, bookmarkId + '.png')
+        subprocess.check_call([sys.executable, retrievePath, thumbUrl, thumbPath])
+    except (WebpageExtractionError, ValueError, subprocess.CalledProcessError) as e:
+        # Any previously downloaded thumbnail will be retained.
+        xbmc.log('Failed to retrieve favicon: ' + str(e))
 
     tree = readBookmarks()
     if savedBookmarkId is None:
