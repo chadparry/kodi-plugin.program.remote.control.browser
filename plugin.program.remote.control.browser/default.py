@@ -284,7 +284,10 @@ def getBookmarkElement(tree, bookmarkId):
 
 def getBookmarkDirectoryItem(bookmarkId, title, thumbId):
     url = pluginPath + '?' + urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId})
-    listItem = xbmcgui.ListItem(label=title)
+    # A zero-width space is used to escape label metacharacters. Other means of
+    # escaping, such as "$LBRACKET", don't work in this context.
+    escapedTitle = re.sub('[][$]', u'\\g<0>\u200B', title)
+    listItem = xbmcgui.ListItem(label=escapedTitle)
     if thumbId is not None:
         thumbBasename = thumbId + '.png'
         thumbPath = os.path.join(thumbsFolder, thumbBasename)
