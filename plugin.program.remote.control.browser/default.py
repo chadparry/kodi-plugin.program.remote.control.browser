@@ -53,6 +53,7 @@ userDataFolder = xbmc.translatePath("special://profile/addon_data/"+addonID)
 bookmarksPath = os.path.join(userDataFolder, 'bookmarks.xml')
 defaultBookmarksPath = os.path.join(addonPath, 'resources/data/bookmarks.xml')
 thumbsFolder = os.path.join(userDataFolder, 'thumbs')
+defaultThumbsFolder = os.path.join(addonPath, 'resources/data/thumbs')
 
 if not os.path.isdir(userDataFolder):
     os.mkdir(userDataFolder)
@@ -285,7 +286,10 @@ def getBookmarkDirectoryItem(bookmarkId, title, thumbId):
     url = pluginPath + '?' + urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId})
     listItem = xbmcgui.ListItem(label=title)
     if thumbId is not None:
-        thumbPath = os.path.join(thumbsFolder, thumbId + '.png')
+        thumbBasename = thumbId + '.png'
+        thumbPath = os.path.join(thumbsFolder, thumbBasename)
+        if not os.path.exists(thumbPath):
+            thumbPath = os.path.join(defaultThumbsFolder, thumbBasename)
         if os.path.exists(thumbPath):
             listItem.setArt({
                 'thumb': thumbPath,
