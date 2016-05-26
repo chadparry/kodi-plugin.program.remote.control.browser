@@ -42,7 +42,6 @@ except ImportError:
     pylirc = None
 
 addon = xbmcaddon.Addon()
-pluginPath = sys.argv[0]
 pluginhandle = int(sys.argv[1])
 addonID = addon.getAddonInfo('id')
 addonPath = addon.getAddonInfo('path')
@@ -265,6 +264,17 @@ class KodiMixer:
             self.delegate.setvolume(self.volume)
 
 
+def buildPluginUrl(query):
+    pluginPath = sys.argv[0]
+    components = urlparse.urlparse(pluginPath)
+    return urlparse.ParseResult(
+        scheme=components.scheme,
+        netloc=components.netloc,
+        path=components.path,
+        params=components.params,
+        query=urllib.urlencode(query),
+        fragment=None).geturl()
+
 def readBookmarks():
     try:
         return xml.etree.ElementTree.parse(bookmarksPath)
@@ -283,7 +293,7 @@ def getBookmarkElement(tree, bookmarkId):
 
 
 def getBookmarkDirectoryItem(bookmarkId, title, thumbId):
-    url = pluginPath + '?' + urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId})
+    url = buildPluginUrl({'mode': 'launchBookmark', 'id': bookmarkId})
     # A zero-width space is used to escape label metacharacters. Other means of
     # escaping, such as "$LBRACKET", don't work in this context.
     escapedTitle = re.sub('[][$]', u'\\g<0>\u200B', title)
@@ -298,12 +308,12 @@ def getBookmarkDirectoryItem(bookmarkId, title, thumbId):
                 'thumb': thumbPath,
             })
     listItem.addContextMenuItems([
-        (translation(30025), 'RunPlugin({})'.format(pluginPath + '?' +
-            urllib.urlencode({'mode': 'launchBookmark', 'id': bookmarkId}))),
-        (translation(30006), 'RunPlugin({})'.format(pluginPath + '?' +
-            urllib.urlencode({'mode': 'editBookmark', 'id': bookmarkId}))),
-        (translation(30002), 'RunPlugin({})'.format(pluginPath + '?' +
-            urllib.urlencode({'mode': 'removeBookmark', 'id': bookmarkId}))),
+        (translation(30025), 'RunPlugin({})'.format(buildPluginUrl(
+            {'mode': 'launchBookmark', 'id': bookmarkId}))),
+        (translation(30006), 'RunPlugin({})'.format(buildPluginUrl(
+            {'mode': 'editBookmark', 'id': bookmarkId}))),
+        (translation(30002), 'RunPlugin({})'.format(buildPluginUrl(
+            {'mode': 'removeBookmark', 'id': bookmarkId}))),
     ])
     # Kodi lets addons render their own folders.
     isFolder = True
@@ -318,7 +328,7 @@ def index():
         bookmark.get('thumb'))
         for bookmark in tree.iter('bookmark')]
 
-    url = pluginPath + '?' + urllib.urlencode({'mode': 'addBookmark'})
+    url = buildPluginUrl({'mode': 'addBookmark'})
     listItem = xbmcgui.ListItem('[B]{}[/B]'.format(translation(30001)))
     listItem.setArt({
         'thumb': 'DefaultFile.png',
