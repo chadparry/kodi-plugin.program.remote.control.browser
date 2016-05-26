@@ -1,2 +1,5 @@
+0.2.0
+- Support a remote control
+
 0.1.0
 - Port of program plugin.program.browser.launcher 1.1.5
