@@ -495,12 +495,16 @@ def launchBookmark(bookmarkId):
         addon.openSettings()
         return
 
-    # Flashing a white screen on switching to chrome looks bad, so I'll use a temp html file with black background
-    # to redirect to our desired location.
-    blackPath = os.path.join(userDataFolder, "black.html")
-    blackUrl = 'file://' + urllib.quote(blackPath)
-    with open(blackPath, "w") as blackFile:
-        blackFile.write('<html><body style="background:black"><script>window.location.href = "%s";</script></body></html>' % url)
+    # Flashing a white screen looks bad, but it is improved with a black
+    # interstitial page.
+    blackPath = os.path.join(addonPath, 'resources/data/black.html')
+    blackUrl = urlparse.ParseResult(
+        scheme='file',
+        netloc=None,
+        path=blackPath,
+        params=None,
+        query=urllib.quote_plus(url),
+        fragment=None).geturl()
 
     browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
 
