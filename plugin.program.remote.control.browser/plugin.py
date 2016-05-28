@@ -155,12 +155,12 @@ class KodiMixer:
 @contextlib.contextmanager
 def suspendXbmcLirc():
     xbmc.log('Suspending XBMC LIRC', xbmc.LOGDEBUG)
-    xbmc.executebuiltin("LIRC.Stop")
+    xbmc.executebuiltin('LIRC.Stop')
     try:
         yield
     finally:
         xbmc.log('Resuming XBMC LIRC', xbmc.LOGDEBUG)
-        xbmc.executebuiltin("LIRC.Start")
+        xbmc.executebuiltin('LIRC.Start')
 
 
 @contextlib.contextmanager
@@ -306,7 +306,7 @@ def raiseBrowser(pid, xdotoolPath):
 def runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath):
     with (
             suspendXbmcLirc()), (
-            runPylirc("browser", lircConfig)) as lircFd, (
+            runPylirc('browser', lircConfig)) as lircFd, (
             KodiMixer()) as mixer, (
             runBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid, xdotoolPath)):
@@ -561,7 +561,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             bookmark.set('url', url)
         self.makedirs(self.profileFolder)
         tree.write(self.bookmarksPath)
-        xbmc.executebuiltin("Container.Refresh")
+        xbmc.executebuiltin('Container.Refresh')
 
         # Try to download an icon for the bookmark.
         try:
@@ -616,7 +616,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             removeThumbId = bookmark.get('thumb')
             bookmark.set('thumb', thumbId)
             tree.write(self.bookmarksPath)
-            xbmc.executebuiltin("Container.Refresh")
+            xbmc.executebuiltin('Container.Refresh')
             self.removeThumb(removeThumbId)
 
     def addBookmark(self):
@@ -636,7 +636,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         tree.write(self.bookmarksPath)
         self.removeThumb(thumbId)
 
-        xbmc.executebuiltin("Container.Refresh")
+        xbmc.executebuiltin('Container.Refresh')
 
     def launchBookmark(self, bookmarkId):
         tree = self.readBookmarks()
@@ -644,12 +644,13 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         url = bookmark.get('url')
         xbmc.Player().stop()
 
-        browserPath = self.getSetting("browserPath")
-        browserArgs = self.getSetting("browserArgs")
-        xdotoolPath = self.getSetting("xdotoolPath")
+        browserPath = self.getSetting('browserPath')
+        browserArgs = self.getSetting('browserArgs')
+        xdotoolPath = self.getSetting('xdotoolPath')
 
         if not browserPath or not os.path.isfile(browserPath):
-            xbmc.executebuiltin('XBMC.Notification(Info:,{}!,5000)'.format(self.getLocalizedString(30005)))
+            xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
+                self.getLocalizedString(30005).replace('"', r'\"')))
             self.openSettings()
             return
 
@@ -666,7 +667,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
         browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
 
-        lircConfig = os.path.join(self.addonFolder, "resources/data/browser.lirc")
+        lircConfig = os.path.join(self.addonFolder, 'resources/data/browser.lirc')
         runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath)
 
 

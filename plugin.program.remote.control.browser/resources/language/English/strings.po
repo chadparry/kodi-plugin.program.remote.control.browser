@@ -42,7 +42,7 @@ msgid "URL"
 msgstr ""
 
 msgctxt "#30005"
-msgid "Browser not found"
+msgid "Browser not found!"
 msgstr ""
 
 msgctxt "#30006"
