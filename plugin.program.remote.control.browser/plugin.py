@@ -53,9 +53,6 @@ BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
 PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
 
 
-FetchedWebpage = collections.namedtuple('FetchedWebpage', ('soup', 'error', 'url'))
-
-
 class JsonRpcError(RuntimeError):
     pass
 
@@ -258,9 +255,9 @@ def runBrowser(browserCmd):
                 xbmc.log('Joined with browser monitoring thread', xbmc.LOGDEBUG)
 
 
-def activateWindow(cmd, proc, aborting, xdotoolPath):
+def activateWindow(cmd, proc, isAborting, xdotoolPath):
     (output, error) = proc.communicate()
-    if aborting.is_set():
+    if isAborting.is_set():
         xbmc.log('Aborting search for browser PID', xbmc.LOGDEBUG)
         return
     if proc.returncode != 0:
@@ -268,7 +265,7 @@ def activateWindow(cmd, proc, aborting, xdotoolPath):
         raise subprocess.CalledProcessError(proc.returncode, cmd, output)
     wids = [wid for wid in output.split('\n') if wid]
     for wid in wids:
-        if aborting.is_set():
+        if isAborting.is_set():
             xbmc.log('Aborting activation of windows', xbmc.LOGDEBUG)
             return
         xbmc.log('Activating window with WID: ' + wid, xbmc.LOGDEBUG)
@@ -288,14 +285,14 @@ def raiseBrowser(pid, xdotoolPath):
     xbmc.log('Searching for browser PID: ' + ' '.join(pipes.quote(arg) for arg in cmd), xbmc.LOGINFO)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
     try:
-        aborting = threading.Event()
-        activatorStarting = threading.Thread(target=activateWindow, args=(cmd, proc, aborting, xdotoolPath))
+        isAborting = threading.Event()
+        activatorStarting = threading.Thread(target=activateWindow, args=(cmd, proc, isAborting, xdotoolPath))
         activatorStarting.start()
         activator = activatorStarting
 
         yield
     finally:
-        aborting.set()
+        isAborting.set()
         if proc.poll() is None:
             proc.kill()
         proc.wait()
@@ -504,15 +501,86 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 xbmc.log('Failed to remove thumbnail: ' + thumbId, xbmc.LOGINFO)
                 pass
 
-    def fetchWebpage(self, url):
+    def scrapeWebpage(self, url, thumbId, isAborting, isTitleReady, fetchedTitleSlot):
+        webpage = None
         try:
-            xbmc.log('Fetching webpage: ' + url, xbmc.LOGINFO)
-            fd = urllib2.urlopen(url)
-            return FetchedWebpage(bs4.BeautifulSoup(fd, 'html.parser'), None, fd.geturl())
-        except (ValueError, IOError) as e:
-            return FetchedWebpage(None, WebpageExtractionError(str(e)), url)
+            try:
+                if isAborting.is_set():
+                    xbmc.log('Aborting fetch of webpage', xbmc.LOGINFO)
+                    return
+                xbmc.log('Fetching webpage: ' + url, xbmc.LOGINFO)
+                webpage = urllib2.urlopen(url)
 
-    def inputBookmark(self, savedBookmarkId=None, defaultUrl='http://', defaultTitle=None):
+                if isAborting.is_set():
+                    xbmc.log('Aborting parse of webpage', xbmc.LOGINFO)
+                    return
+                xbmc.log('Parsing webpage: ' + url, xbmc.LOGDEBUG)
+                soup = bs4.BeautifulSoup(webpage, 'html.parser')
+
+                if isAborting.is_set():
+                    xbmc.log('Aborting scrape of webpage title', xbmc.LOGINFO)
+                    return
+                # Search for the title.
+                titleElement = soup.find('title')
+                if titleElement is not None:
+                    fetchedTitleSlot.append(titleElement.text)
+            finally:
+                isTitleReady.set()
+
+            if isAborting.is_set():
+                xbmc.log('Aborting scrape of webpage links', xbmc.LOGINFO)
+                return
+            # Search for a rel="icon" attribute.
+            linkElements = soup.findAll('link', rel='icon', href=True)
+            # Prefer the icon with the best quality.
+            linkElement = next(
+                iter(sorted(
+                    linkElements,
+                    key=lambda element: (
+                        # Prefer large images.
+                        reduce(lambda prev, cur: prev * int(cur, 10), re.findall(r'\d+', element['sizes']), 1)
+                            if 'sizes' in element.attrs else 0,
+                        # Prefer PNG format.
+                        'type' in element.attrs and element['type'] == 'image/png',
+                        # Prefer "icon" to "shortcut icon".
+                        element['rel'] == ['icon']),
+                    reverse=True)),
+                None)
+        except (ValueError, IOError) as e:
+            xbmc.log('Failed to scrape bookmarked page: ' + str(e))
+            linkElement = None
+
+        # Try to download the icon.
+        try:
+            if webpage is not None:
+                base = webpage.url
+            else:
+                base = url
+            if linkElement is None:
+                xbmc.log('Falling back to default favicon path', xbmc.LOGDEBUG)
+                link = '/favicon.ico'
+            else:
+                link = linkElement['href']
+            thumbUrl = urlparse.urljoin(base, link)
+
+            if isAborting.is_set():
+                xbmc.log('Aborting creation of thumbs folder', xbmc.LOGINFO)
+                return
+            self.makedirs(self.thumbsFolder)
+
+            # The Pillow module needs to be isolated to its own subprocess because
+            # many distributions are prone to deadlock.
+            retrievePath = os.path.join(self.addonFolder, 'retrieve.py')
+            thumbPath = self.getThumbPath(thumbId)
+            if isAborting.is_set():
+                xbmc.log('Aborting retrieval of favicon', xbmc.LOGINFO)
+                return
+            xbmc.log('Retrieving favicon: ' + thumbUrl, xbmc.LOGINFO)
+            subprocess.check_call([sys.executable, retrievePath, thumbUrl, thumbPath])
+        except (ValueError, IOError, subprocess.CalledProcessError) as e:
+            xbmc.log('Failed to retrieve favicon: ' + str(e))
+
+    def inputBookmark(self, bookmarkId=None, defaultUrl='http://', defaultTitle=None):
         webpage = None
         keyboard = xbmc.Keyboard(defaultUrl, self.getLocalizedString(30004))
         keyboard.doModal()
@@ -521,36 +589,47 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             return
         url = keyboard.getText()
 
-        if defaultTitle is None:
-            if webpage is None:
-                webpage = self.fetchWebpage(url)
-            try:
-                if webpage.error is not None:
-                    raise webpage.error
-                titleElement = webpage.soup.find('title')
-                if titleElement is None:
-                    raise WebpageExtractionError('Webpage has no title element')
-                defaultTitle = titleElement.text
-            except WebpageExtractionError as e:
-                xbmc.log('Failed to extract title from bookmarked page: ' + str(e))
-                defaultTitle = urlparse.urlparse(url).netloc
+        # The old thumb ID can't be reused, because then the cached copy of the
+        # old image would never be replaced.
+        thumbId = str(uuid.uuid1())
 
-        keyboard = xbmc.Keyboard(defaultTitle, self.getLocalizedString(30003))
-        keyboard.doModal()
-        if not keyboard.isConfirmed():
-            xbmc.log('User aborted title input', xbmc.LOGDEBUG)
-            return
-        title = keyboard.getText()
+        # Asynchronously scrape information from the webpage while the user types.
+        isAborting = threading.Event()
+        isTitleReady = threading.Event()
+        fetchedTitleSlot = []
+        scraper = threading.Thread(target=self.scrapeWebpage,
+            args=(url, thumbId, isAborting, isTitleReady, fetchedTitleSlot))
+        scraper.start()
+        try:
+            if defaultTitle is None:
+                xbmc.log('Waiting for scraped title', xbmc.LOGDEBUG)
+                isTitleReady.wait()
+                defaultTitle = next(iter(fetchedTitleSlot), None)
+                xbmc.log('Received scraped title: ' + str(defaultTitle), xbmc.LOGDEBUG)
+                if defaultTitle is None:
+                    defaultTitle = urlparse.urlparse(url).netloc
 
-        if savedBookmarkId is None:
-            bookmarkId = str(uuid.uuid1())
-        else:
-            bookmarkId = savedBookmarkId
+            keyboard = xbmc.Keyboard(defaultTitle, self.getLocalizedString(30003))
+            keyboard.doModal()
+            if not keyboard.isConfirmed():
+                xbmc.log('User aborted title input', xbmc.LOGDEBUG)
+                isAborting.set()
+                return
+            title = keyboard.getText()
+        except:
+            xbmc.log('Requesting abort of scraper thread', xbmc.LOGINFO)
+            isAborting.set()
+            raise
+        finally:
+            xbmc.log('Joining with scraper thread', xbmc.LOGDEBUG)
+            scraper.join()
+            xbmc.log('Joined with scraper thread', xbmc.LOGDEBUG)
 
         # Save the bookmark metadata.
         tree = self.readBookmarks()
-        if savedBookmarkId is None:
-            xml.etree.ElementTree.SubElement(tree.getroot(), 'bookmark', {
+        if bookmarkId is None:
+            bookmarkId = str(uuid.uuid1())
+            bookmark = xml.etree.ElementTree.SubElement(tree.getroot(), 'bookmark', {
                 'id': bookmarkId,
                 'title': title,
                 'url': url,
@@ -559,64 +638,15 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             bookmark = self.getBookmarkElement(tree, bookmarkId)
             bookmark.set('title', title)
             bookmark.set('url', url)
+        if os.path.isfile(self.getThumbPath(thumbId)):
+            removeThumbId = bookmark.get('thumb')
+            bookmark.set('thumb', thumbId)
+        else:
+            removeThumbId = None
         self.makedirs(self.profileFolder)
         tree.write(self.bookmarksPath)
         xbmc.executebuiltin('Container.Refresh')
-
-        # Try to download an icon for the bookmark.
-        try:
-            if webpage is None:
-                webpage = self.fetchWebpage(url)
-            if webpage.error is None:
-                # Search for a rel="icon" attribute.
-                linkElements = webpage.soup.findAll('link', rel='icon', href=True)
-                # Prefer the icon with the best quality.
-                linkElement = next(
-                    iter(sorted(
-                        linkElements,
-                        key=lambda element: (
-                            # Prefer large images.
-                            reduce(lambda prev, cur: prev * int(cur, 10), re.findall(r'\d+', element['sizes']), 1)
-                                if 'sizes' in element.attrs else 0,
-                            # Prefer PNG format.
-                            'type' in element.attrs and element['type'] == 'image/png',
-                            # Prefer "icon" to "shortcut icon".
-                            element['rel'] == ['icon']),
-                        reverse=True)),
-                    None)
-            else:
-                xbmc.log('Failed to open webpage: ' + str(webpage.error))
-                linkElement = None
-            if linkElement is None:
-                xbmc.log('Falling back to default favicon path', xbmc.LOGDEBUG)
-                link = '/favicon.ico'
-            else:
-                link = linkElement['href']
-            thumbUrl = urlparse.urljoin(webpage.url, link)
-
-            self.makedirs(self.thumbsFolder)
-
-            # The Pillow module needs to be isolated to its own subprocess because
-            # many distributions are prone to deadlock.
-            retrievePath = os.path.join(self.addonFolder, 'retrieve.py')
-            # The old thumb ID can't be reused, because then the cached copy of the
-            # old image would never be replaced.
-            thumbId = str(uuid.uuid1())
-            thumbPath = self.getThumbPath(thumbId)
-            xbmc.log('Retrieving favicon: ' + thumbUrl, xbmc.LOGINFO)
-            subprocess.check_call([sys.executable, retrievePath, thumbUrl, thumbPath])
-        except (WebpageExtractionError, ValueError, subprocess.CalledProcessError) as e:
-            # Any previously downloaded thumbnail will be retained.
-            xbmc.log('Failed to retrieve favicon: ' + str(e))
-            thumbId = None
-
-        if thumbId is not None:
-            tree = self.readBookmarks()
-            bookmark = self.getBookmarkElement(tree, bookmarkId)
-            removeThumbId = bookmark.get('thumb')
-            bookmark.set('thumb', thumbId)
-            tree.write(self.bookmarksPath)
-            xbmc.executebuiltin('Container.Refresh')
+        if removeThumbId is not None:
             self.removeThumb(removeThumbId)
 
     def addBookmark(self):
