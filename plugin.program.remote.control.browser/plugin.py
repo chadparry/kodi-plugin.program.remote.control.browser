@@ -159,12 +159,12 @@ def suspendXbmcLirc():
 
 
 @contextlib.contextmanager
-def runPylirc(name, configuration):
+def runPylirc(configuration):
     if pylirc is None:
         xbmc.log('Not initializing pylirc')
         yield
         return
-    fd = pylirc.init(name, configuration)
+    fd = pylirc.init('browser', configuration)
     if not fd:
         raise RuntimeError('Failed to initialize pylirc')
     try:
@@ -301,7 +301,7 @@ def raiseBrowser(pid, xdotoolPath):
 def runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath):
     with (
             suspendXbmcLirc()), (
-            runPylirc('browser', lircConfig)) as lircFd, (
+            runPylirc(lircConfig)) as lircFd, (
             KodiMixer()) as mixer, (
             runBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid, xdotoolPath)):
@@ -463,6 +463,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 {'mode': 'launchBookmark', 'id': bookmarkId}))),
             (self.getLocalizedString(30006), 'RunPlugin({})'.format(self.buildPluginUrl(
                 {'mode': 'editBookmark', 'id': bookmarkId}))),
+            (self.getLocalizedString(30027), 'RunPlugin({})'.format(self.buildPluginUrl(
+                {'mode': 'editKeymap', 'id': bookmarkId}))),
             (self.getLocalizedString(30002), 'RunPlugin({})'.format(self.buildPluginUrl(
                 {'mode': 'removeBookmark', 'id': bookmarkId}))),
         ])
@@ -579,7 +581,6 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             xbmc.log('Failed to retrieve favicon: ' + str(e))
 
     def inputBookmark(self, bookmarkId=None, defaultUrl='http://', defaultTitle=None):
-        webpage = None
         keyboard = xbmc.Keyboard(defaultUrl, self.getLocalizedString(30004))
         keyboard.doModal()
         if not keyboard.isConfirmed():
@@ -631,6 +632,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 'id': bookmarkId,
                 'title': title,
                 'url': url,
+                'lircrc': 'special://home/addons/plugin.program.remote.control.browser/resources/data/lircd/browser.lirc',
             })
         else:
             bookmark = self.getBookmarkElement(tree, bookmarkId)
@@ -655,6 +657,25 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         bookmark = self.getBookmarkElement(tree, bookmarkId)
         self.inputBookmark(bookmarkId, bookmark.get('url'), bookmark.get('title'))
 
+    def editKeymap(self, bookmarkId):
+        tree = self.readBookmarks()
+        bookmark = self.getBookmarkElement(tree, bookmarkId)
+        defaultLircrc = bookmark.get('lircrc')
+
+        ShowAndGetFile = 1
+        lircrc = xbmcgui.Dialog().browseSingle(
+            type=ShowAndGetFile,
+            heading=self.getLocalizedString(30028),
+            shares='files',
+            mask='.lirc',
+            defaultt=defaultLircrc)
+
+        tree = self.readBookmarks()
+        bookmark = self.getBookmarkElement(tree, bookmarkId)
+        bookmark.set('lircrc', lircrc)
+        self.makedirs(self.profileFolder)
+        tree.write(self.bookmarksPath)
+
     def removeBookmark(self, bookmarkId):
         tree = self.readBookmarks()
         bookmark = self.getBookmarkElement(tree, bookmarkId)
@@ -670,7 +691,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         tree = self.readBookmarks()
         bookmark = self.getBookmarkElement(tree, bookmarkId)
         url = bookmark.get('url')
-        xbmc.Player().stop()
+        lircConfig = xbmc.translatePath(bookmark.get('lircrc')).decode('utf_8')
 
         browserPath = self.getSetting('browserPath')
         browserArgs = self.getSetting('browserArgs')
@@ -695,7 +716,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
         browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
 
-        lircConfig = os.path.join(self.addonFolder, 'resources/data/browser.lirc')
+        xbmc.Player().stop()
         runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath)
 
 
@@ -730,14 +751,16 @@ def main():
     xbmc.log('Parsed mode: ' + mode, xbmc.LOGDEBUG)
     if mode == 'index':
         plugin.index()
-    elif mode == 'addBookmark':
-        plugin.addBookmark()
     elif mode == 'launchBookmark':
         plugin.launchBookmark(getBookmarkId(args))
-    elif mode == 'removeBookmark':
-        plugin.removeBookmark(getBookmarkId(args))
+    elif mode == 'addBookmark':
+        plugin.addBookmark()
     elif mode == 'editBookmark':
         plugin.editBookmark(getBookmarkId(args))
+    elif mode == 'editKeymap':
+        plugin.editKeymap(getBookmarkId(args))
+    elif mode == 'removeBookmark':
+        plugin.removeBookmark(getBookmarkId(args))
     else:
         raise ValueError('Unrecognized mode: ' + mode)
 

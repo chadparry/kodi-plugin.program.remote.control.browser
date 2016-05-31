@@ -88,3 +88,11 @@ msgstr "Lesezeichen Starten"
 msgctxt "#30026"
 msgid "Warning: Missing Python package “Pillow”"
 msgstr "Warnung: Python-Paket „Pillow“ fehlt"
+
+msgctxt "#30027"
+msgid "Edit Keymap"
+msgstr "Keymap Ändern"
+
+msgctxt "#30028"
+msgid "LIRC Configuration File"
+msgstr "LIRC Konfigurationsdatei"
