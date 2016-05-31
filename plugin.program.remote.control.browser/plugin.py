@@ -689,7 +689,8 @@ def getBookmarkId(args):
 
 def main():
     xbmc.log('Plugin called: ' + ' '.join(pipes.quote(arg) for arg in sys.argv), xbmc.LOGDEBUG)
-    parser = argparse.ArgumentParser()
+    # The Kodi Python customizations broke automatic detection of prog.
+    parser = argparse.ArgumentParser(prog=sys.argv[0])
     parser.add_argument('handle', type=int)
     parser.add_argument('params', type=parsedParams)
     args = parser.parse_args()
