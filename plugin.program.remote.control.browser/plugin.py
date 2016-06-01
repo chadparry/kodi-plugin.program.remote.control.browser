@@ -444,12 +444,14 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             raise ValueError('Unrecognized bookmark ID: ' + bookmarkId)
         return bookmark
 
+    def escapeLabel(self, label):
+        # A zero-width space is used to escape label metacharacters. Other means of
+        # escaping, such as "$LBRACKET", don't work in the context of ListItem labels.
+        return re.sub(u'[][$]', u'\\g<0>\u200B', label)
+
     def getBookmarkDirectoryItem(self, bookmarkId, title, thumbId):
         url = self.buildPluginUrl({'mode': 'launchBookmark', 'id': bookmarkId})
-        # A zero-width space is used to escape label metacharacters. Other means of
-        # escaping, such as "$LBRACKET", don't work in this context.
-        escapedTitle = re.sub('[][$]', u'\\g<0>\u200B', title)
-        listItem = xbmcgui.ListItem(label=escapedTitle)
+        listItem = xbmcgui.ListItem(label=self.escapeLabel(title))
         if thumbId is not None:
             thumbPath = self.getThumbPath(thumbId)
             if not os.path.isfile(thumbPath):
@@ -468,9 +470,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             (self.getLocalizedString(30002), 'RunPlugin({})'.format(self.buildPluginUrl(
                 {'mode': 'removeBookmark', 'id': bookmarkId}))),
         ])
-        # Kodi lets addons render their own folders.
-        isFolder = True
-        return (url, listItem, isFolder)
+        return (url, listItem)
 
     def index(self):
         tree = self.readBookmarks()
@@ -481,12 +481,11 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             for bookmark in tree.iter('bookmark')]
 
         url = self.buildPluginUrl({'mode': 'addBookmark'})
-        listItem = xbmcgui.ListItem('[B]{}[/B]'.format(self.getLocalizedString(30001)))
+        listItem = xbmcgui.ListItem(u'[B]{}[/B]'.format(self.getLocalizedString(30001)))
         listItem.setArt({
             'thumb': 'DefaultFile.png',
         })
-        isFolder = True
-        items.append((url, listItem, isFolder))
+        items.append((url, listItem))
 
         success = xbmcplugin.addDirectoryItems(handle=self.handle, items=items, totalItems=len(items))
         if not success:
@@ -699,7 +698,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
         if not browserPath or not os.path.isfile(browserPath):
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
-                self.getLocalizedString(30005).replace('"', r'\"')))
+                self.getLocalizedString(30005).replace(u'"', ur'\"')))
             self.openSettings()
             return
 
