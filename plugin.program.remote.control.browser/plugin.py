@@ -759,7 +759,10 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
         browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
 
-        xbmc.Player().stop()
+        player = xbmc.Player()
+        if player.isPlaying():
+            player.pause()
+
         runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath)
 
 
