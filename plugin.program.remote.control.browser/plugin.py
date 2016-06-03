@@ -4,6 +4,7 @@ import collections
 import contextlib
 import datetime
 import json
+import math
 import os
 import pipes
 import re
@@ -145,6 +146,33 @@ class KodiMixer:
             self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
         if alsaaudio is not None and not self.muted:
             self.delegate.setvolume(self.volume)
+
+
+class InterminableProgressBar:
+    """Acts as a spinner for work with an unknown duration"""
+
+    DEFAULT_TICK_INTERVAL = datetime.timedelta(milliseconds=250)
+
+    def __init__(self, title):
+        self.title = title
+        self.dialog = xbmcgui.DialogProgress()
+
+    def __enter__(self):
+        self.ticks = 0
+        self.dialog.create(self.getLocalizedString(30029))
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.dialog.close()
+
+    def iscanceled(self):
+        return self.dialog.iscanceled()
+
+    def tick(self):
+        self.ticks += 1
+        # Use a function with an asymptote at 100%.
+        percentage = math.atan(self.ticks / 8.) * 200 / math.pi
+        self.dialog.update(int(percentage))
 
 
 @contextlib.contextmanager
@@ -600,8 +628,14 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         scraper.start()
         try:
             if defaultTitle is None:
-                xbmc.log('Waiting for scraped title', xbmc.LOGDEBUG)
-                isTitleReady.wait()
+                if not isTitleReady.is_set():
+                    xbmc.log('Waiting for scrape of title', xbmc.LOGDEBUG)
+                    with InterminableProgressBar(self.getLocalizedString(30029)) as progress:
+                        while not isTitleReady.wait(progress.DEFAULT_TICK_INTERVAL.total_seconds()):
+                            if progress.iscanceled():
+                                xbmc.log('User aborted scrape of title', xbmc.LOGDEBUG)
+                                return
+                            progress.tick()
                 defaultTitle = next(iter(fetchedTitleSlot), None)
                 xbmc.log('Received scraped title: ' + str(defaultTitle), xbmc.LOGDEBUG)
                 if defaultTitle is None:
@@ -611,17 +645,27 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             keyboard.doModal()
             if not keyboard.isConfirmed():
                 xbmc.log('User aborted title input', xbmc.LOGDEBUG)
-                isAborting.set()
                 return
             title = keyboard.getText()
-        except:
-            xbmc.log('Requesting abort of scraper thread', xbmc.LOGINFO)
-            isAborting.set()
-            raise
+
+            if scraper.isAlive():
+                xbmc.log('Waiting for scrape of thumbnail', xbmc.LOGDEBUG)
+                with InterminableProgressBar(self.getLocalizedString(30029)) as progress:
+                    while True:
+                        scraper.join(progress.DEFAULT_TICK_INTERVAL.total_seconds())
+                        if not scraper.isAlive():
+                            break
+                        if progress.iscanceled():
+                            xbmc.log('User aborted scrape of thumbnail', xbmc.LOGDEBUG)
+                            return
+                        progress.tick()
+                xbmc.log('Finished scrape of thumbnail', xbmc.LOGDEBUG)
         finally:
-            xbmc.log('Joining with scraper thread', xbmc.LOGDEBUG)
-            scraper.join()
-            xbmc.log('Joined with scraper thread', xbmc.LOGDEBUG)
+            if scraper.isAlive():
+                isAborting.set()
+                xbmc.log('Joining with aborted scraper thread', xbmc.LOGDEBUG)
+                scraper.join()
+                xbmc.log('Joined with aborted scraper thread', xbmc.LOGDEBUG)
 
         # Save the bookmark metadata.
         tree = self.readBookmarks()

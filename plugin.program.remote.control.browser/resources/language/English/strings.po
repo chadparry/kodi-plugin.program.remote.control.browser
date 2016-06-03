@@ -98,3 +98,7 @@ msgstr ""
 msgctxt "#30028"
 msgid "LIRC Configuration File"
 msgstr ""
+
+msgctxt "#30029"
+msgid "Downloading Webpage"
+msgstr ""

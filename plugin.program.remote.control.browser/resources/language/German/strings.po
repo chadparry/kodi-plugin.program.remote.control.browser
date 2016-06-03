@@ -96,3 +96,7 @@ msgstr "Keymap Ändern"
 msgctxt "#30028"
 msgid "LIRC Configuration File"
 msgstr "LIRC Konfigurationsdatei"
+
+msgctxt "#30029"
+msgid "Downloading Webpage"
+msgstr "Wird Heruntergeladen Webseite"
