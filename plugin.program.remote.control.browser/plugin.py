@@ -359,7 +359,7 @@ def runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath):
 
             for code in codes:
                 xbmc.log('Received LIRC code: ' + str(code), xbmc.LOGDEBUG)
-                tokens = code.config.split()
+                tokens = shlex.split(code.config)
                 (command, args) = (tokens[0], tokens[1:])
                 isReleasing = False
                 nextReleaseKeyTime = None
