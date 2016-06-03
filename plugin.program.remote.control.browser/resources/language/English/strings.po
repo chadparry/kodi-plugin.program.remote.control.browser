@@ -102,3 +102,11 @@ msgstr ""
 msgctxt "#30029"
 msgid "Downloading Webpage"
 msgstr ""
+
+msgctxt "#30030"
+msgid "Enable Linkcast"
+msgstr ""
+
+msgctxt "#30031"
+msgid "Linkcast Port"
+msgstr ""

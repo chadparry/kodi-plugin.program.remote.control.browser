@@ -100,3 +100,11 @@ msgstr "LIRC Konfigurationsdatei"
 msgctxt "#30029"
 msgid "Downloading Webpage"
 msgstr "Wird Heruntergeladen Webseite"
+
+msgctxt "#30030"
+msgid "Enable Linkcast"
+msgstr "Linkcast Aktivieren"
+
+msgctxt "#30031"
+msgid "Linkcast Port"
+msgstr "Linkcast Port"

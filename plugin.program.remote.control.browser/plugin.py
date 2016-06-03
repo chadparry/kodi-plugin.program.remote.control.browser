@@ -42,6 +42,7 @@ except ImportError:
     pylirc = None
 
 
+DEFAULT_LIRC_CONFIG = 'special://home/addons/plugin.program.remote.control.browser/resources/data/lircd/browser.lirc'
 VOLUME_MIN = 0L
 VOLUME_MAX = 100L
 DEFAULT_VOLUME_STEP = 1L
@@ -159,7 +160,7 @@ class InterminableProgressBar:
 
     def __enter__(self):
         self.ticks = 0
-        self.dialog.create(self.getLocalizedString(30029))
+        self.dialog.create(self.title)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -192,6 +193,7 @@ def runPylirc(configuration):
         xbmc.log('Not initializing pylirc')
         yield
         return
+    xbmc.log('Initializing pylirc with configuration: ' + configuration, xbmc.LOGDEBUG)
     fd = pylirc.init('browser', configuration)
     if not fd:
         raise RuntimeError('Failed to initialize pylirc')
@@ -425,10 +427,10 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         # The Addon.__new__ override doesn't accept additional arguments.
         return super(RemoteControlBrowserPlugin, cls).__new__(cls)
 
-    def __init__(self, pluginUrl, handle):
+    def __init__(self, handle):
         super(RemoteControlBrowserPlugin, self).__init__()
-        self.pluginUrl = pluginUrl
         self.handle = handle
+        self.pluginId = self.getAddonInfo('id')
         self.addonFolder = xbmc.translatePath(self.getAddonInfo('path')).decode('utf_8')
         self.profileFolder = xbmc.translatePath(self.getAddonInfo('profile')).decode('utf_8')
         self.bookmarksPath = os.path.join(self.profileFolder, 'bookmarks.xml')
@@ -437,12 +439,11 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         self.defaultThumbsFolder = os.path.join(self.addonFolder, 'resources/data/thumbs')
 
     def buildPluginUrl(self, query):
-        components = urlparse.urlparse(self.pluginUrl)
         return urlparse.ParseResult(
-            scheme=components.scheme,
-            netloc=components.netloc,
-            path=components.path,
-            params=components.params,
+            scheme='plugin',
+            netloc=self.pluginId,
+            path='/',
+            params=None,
             query=urllib.urlencode(query),
             fragment=None).geturl()
 
@@ -675,7 +676,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 'id': bookmarkId,
                 'title': title,
                 'url': url,
-                'lircrc': 'special://home/addons/plugin.program.remote.control.browser/resources/data/lircd/browser.lirc',
+                'lircrc': DEFAULT_LIRC_CONFIG,
             })
         else:
             bookmark = self.getBookmarkElement(tree, bookmarkId)
@@ -735,7 +736,13 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         bookmark = self.getBookmarkElement(tree, bookmarkId)
         url = bookmark.get('url')
         lircConfig = xbmc.translatePath(bookmark.get('lircrc')).decode('utf_8')
+        self.launchUrl(url, lircConfig)
 
+    def linkcast(self, url):
+        lircConfig = xbmc.translatePath(DEFAULT_LIRC_CONFIG).decode('utf_8')
+        self.launchUrl(url, lircConfig)
+
+    def launchUrl(self, url, lircConfig):
         browserPath = self.getSetting('browserPath')
         browserArgs = self.getSetting('browserArgs')
         xdotoolPath = self.getSetting('xdotoolPath')
@@ -767,11 +774,15 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
 
 def parsedParams(search):
-    query = search[1:]
-    if query:
-        return urlparse.parse_qs(query, strict_parsing=True)
-    else:
-        return {}
+    query = urlparse.urlparse(search).query
+    return urlparse.parse_qs(query, strict_parsing=True) if query else {}
+
+
+def getUrl(args):
+    url = next(iter(args.params.get('url', [])), None)
+    if url is None:
+        raise ValueError('Missing URL')
+    return url
 
 
 def getBookmarkId(args):
@@ -785,18 +796,19 @@ def getBookmarkId(args):
 
 def main():
     xbmc.log('Plugin called: ' + ' '.join(pipes.quote(arg) for arg in sys.argv), xbmc.LOGDEBUG)
-    # The Kodi Python customizations broke automatic detection of prog.
-    parser = argparse.ArgumentParser(prog=sys.argv[0])
+    parser = argparse.ArgumentParser()
     parser.add_argument('handle', type=int)
     parser.add_argument('params', type=parsedParams)
     args = parser.parse_args()
 
-    plugin = RemoteControlBrowserPlugin(parser.prog, args.handle)
+    plugin = RemoteControlBrowserPlugin(args.handle)
 
     mode = next(iter(args.params.get('mode', ['index'])), None)
     xbmc.log('Parsed mode: ' + mode, xbmc.LOGDEBUG)
     if mode == 'index':
         plugin.index()
+    elif mode == 'linkcast':
+        plugin.linkcast(getUrl(args))
     elif mode == 'launchBookmark':
         plugin.launchBookmark(getBookmarkId(args))
     elif mode == 'addBookmark':

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <addon id="plugin.program.remote.control.browser" name="Remote Control Browser" version="0.3.0" provider-name="Chad Parry">
     <requires>
-        <import addon="xbmc.python" version="2.14.0"/>
+        <import addon="xbmc.python" version="2.19.0"/>
         <import addon="script.module.beautifulsoup4" version="4.3.2"/>
     </requires>
     <extension point="xbmc.python.pluginsource" library="plugin.py">
