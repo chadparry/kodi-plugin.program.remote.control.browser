@@ -805,22 +805,19 @@ def main():
 
     mode = next(iter(args.params.get('mode', ['index'])), None)
     xbmc.log('Parsed mode: ' + mode, xbmc.LOGDEBUG)
-    if mode == 'index':
-        plugin.index()
-    elif mode == 'linkcast':
-        plugin.linkcast(getUrl(args))
-    elif mode == 'launchBookmark':
-        plugin.launchBookmark(getBookmarkId(args))
-    elif mode == 'addBookmark':
-        plugin.addBookmark()
-    elif mode == 'editBookmark':
-        plugin.editBookmark(getBookmarkId(args))
-    elif mode == 'editKeymap':
-        plugin.editKeymap(getBookmarkId(args))
-    elif mode == 'removeBookmark':
-        plugin.removeBookmark(getBookmarkId(args))
-    else:
+    HANDLERS = {
+        'index': lambda args: plugin.index(),
+        'linkcast': lambda args: plugin.linkcast(getUrl(args)),
+        'launchBookmark': lambda args: plugin.launchBookmark(getBookmarkId(args)),
+        'addBookmark': lambda args: plugin.addBookmark(),
+        'editBookmark': lambda args: plugin.editBookmark(getBookmarkId(args)),
+        'editKeymap': lambda args: plugin.editKeymap(getBookmarkId(args)),
+        'removeBookmark': lambda args: plugin.removeBookmark(getBookmarkId(args)),
+    }
+    handler = HANDLERS.get(mode)
+    if handler is None:
         raise ValueError('Unrecognized mode: ' + mode)
+    handler(args)
 
 
 if __name__ == "__main__":
