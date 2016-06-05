@@ -110,3 +110,27 @@ msgstr ""
 msgctxt "#30031"
 msgid "Linkcast Port"
 msgstr ""
+
+msgctxt "#30032"
+msgid "Kodi Linkcast"
+msgstr ""
+
+msgctxt "#30033"
+msgid "Remote Control Browser Addon"
+msgstr ""
+
+msgctxt "#30034"
+msgid "The link was sent to Kodi."
+msgstr ""
+
+msgctxt "#30035"
+msgid "Linkcast"
+msgstr ""
+
+msgctxt "#30036"
+msgid "Drag this bookmarklet to the bookmarks bar and then you can use it to linkcast your current webpage:"
+msgstr ""
+
+msgctxt "#30037"
+msgid "Kodi Linkcast does not support the scheme: %(url)s"
+msgstr ""

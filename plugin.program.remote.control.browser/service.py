@@ -1,8 +1,9 @@
 import BaseHTTPServer
 import cgi
 import collections
+import json
 import os
-import shutil
+import re
 import subprocess
 import sys
 import threading
@@ -105,11 +106,22 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'text/html')
         self.end_headers()
 
+        if url is None:
+            url = ''
+            status = ''
+        else:
+            status = '<div id="status">{}</div>\n'.format(cgi.escape(self.server.addon.getLocalizedString(30034)))
+
         indexPath = os.path.join(self.server.addon.addonFolder, 'resources/data/index.html')
-        with open(indexPath) as index:
-            # FIXME: Localize this response
-            # FIXME: If url is not None, then tell the user what was launched
-            shutil.copyfileobj(index, self.wfile)
+        self.serveTemplate(indexPath, {
+            'TITLE_HTML': cgi.escape(self.server.addon.getLocalizedString(30032)),
+            'SUBTITLE_HTML': cgi.escape(self.server.addon.getLocalizedString(30033)),
+            'STATUS': status,
+            'URL_ATTR': cgi.escape(url, quote=True),
+            'SUBMIT_ATTR': cgi.escape(self.server.addon.getLocalizedString(30035), quote=True),
+            'INSTRUCTIONS_HTML': cgi.escape(self.server.addon.getLocalizedString(30036)),
+            'UNSUPPORTED_SCHEME_CSTR': json.dumps(self.server.addon.getLocalizedString(30037)),
+        })
 
     def serveCloseLinkcast(self, params):
         """Serves a webpage that automatically closes itself
@@ -132,8 +144,9 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
 
         closePath = os.path.join(self.server.addon.addonFolder, 'resources/data/close.html')
-        with open(closePath) as close:
-            shutil.copyfileobj(close, self.wfile)
+        self.serveTemplate(closePath, {
+            'TITLE_HTML': cgi.escape(self.server.addon.getLocalizedString(30032)),
+        })
 
     def serveXhpLinkcast(self, params):
         """Serves an XmlHttpRpc response for CORS requests"""
@@ -171,6 +184,20 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             fragment=None).geturl()
         self.send_header('Location', location)
         self.end_headers()
+
+    def serveTemplate(self, path, params):
+        META_VARIABLES = {
+            'LEFT_CURLY_BRACKET': '{{',
+            'RIGHT_CURLY_BRACKET': '}}',
+        }
+        vars = dict(META_VARIABLES.items() + params.items())
+        def repl(match):
+            return vars[match.group(1)]
+
+        with open(path) as file:
+            template = file.read()
+        expanded = re.sub('{{([^{}]+)}}', repl, template)
+        self.wfile.write(expanded)
 
     def linkcast(self, url):
         plugin = self.server.addon.buildPluginUrl({'mode': 'linkcast', 'url': url})
