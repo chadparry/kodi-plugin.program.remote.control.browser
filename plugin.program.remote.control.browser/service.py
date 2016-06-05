@@ -233,10 +233,19 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
         super(RemoteControlBrowserService, self).__init__()
         self.pluginId = self.getAddonInfo('id')
         self.addonFolder = xbmc.translatePath(self.getAddonInfo('path')).decode('utf_8')
+        self.profileFolder = xbmc.translatePath(self.getAddonInfo('profile')).decode('utf_8')
         self.settingsChangeLock = threading.Lock()
         self.isShutdown = False
         self.linkcastServer = None
         self.linkcastServerThread = None
+
+    def clearBrowserLock(self):
+        """Clears the pidfile in case the last shutdown was not clean"""
+        browserLockPath = os.path.join(self.profileFolder, 'browser.pid')
+        try:
+            os.remove(browserLockPath)
+        except OSError:
+            pass
 
     def buildPluginUrl(self, query):
         return urlparse.ParseResult(
@@ -390,6 +399,7 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
 
 def main():
     service = RemoteControlBrowserService()
+    service.clearBrowserLock()
     service.generateSettings()
     monitor = LinkcastMonitor(service)
     service.reloadLinkcastServer()

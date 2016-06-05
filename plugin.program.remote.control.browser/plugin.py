@@ -57,7 +57,7 @@ class JsonRpcError(RuntimeError):
     pass
 
 
-class WebpageExtractionError(RuntimeError):
+class CompetingLaunchError(RuntimeError):
     pass
 
 
@@ -328,12 +328,37 @@ def raiseBrowser(pid, xdotoolPath):
             activator.join()
 
 
-def runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath):
+@contextlib.contextmanager
+def lockPidfile(browserLockPath, pid):
+    isMine = False
+    try:
+        try:
+            pidfile = os.open(browserLockPath, os.O_RDWR | os.O_CREAT | os.O_EXCL)
+        except OSError as e:
+            xbmc.log('Failed to acquire pidfile: ' + str(e), xbmc.LOGDEBUG)
+            raise CompetingLaunchError()
+        try:
+            isMine = True
+            os.write(pidfile, str(pid))
+        finally:
+            os.close(pidfile)
+
+        yield
+    finally:
+        if isMine:
+            try:
+                os.remove(browserLockPath)
+            except OSError as e:
+                xbmc.log('Failed to remove pidfile: ' + str(e))
+
+
+def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath):
     with (
             suspendXbmcLirc()), (
+            runBrowser(browserCmd)) as (browser, browserExitFd), (
+            lockPidfile(browserLockPath, browser.pid)), (
             runPylirc(lircConfig)) as lircFd, (
             KodiMixer()) as mixer, (
-            runBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid, xdotoolPath)):
 
         releaseKeyTime = None
@@ -743,6 +768,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         self.launchUrl(url, lircConfig)
 
     def launchUrl(self, url, lircConfig):
+        browserLockPath = os.path.join(self.profileFolder, 'browser.pid')
         browserPath = self.getSetting('browserPath')
         browserArgs = self.getSetting('browserArgs')
         xdotoolPath = self.getSetting('xdotoolPath')
@@ -770,7 +796,12 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         if player.isPlaying():
             player.pause()
 
-        runRemoteControlBrowser(lircConfig, browserCmd, xdotoolPath)
+        try:
+            runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath)
+        except CompetingLaunchError:
+            xbmc.log('A competing browser instance is already running')
+            xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
+                self.getLocalizedString(30038).replace(u'"', ur'\"')))
 
 
 def parsedParams(search):
