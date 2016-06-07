@@ -485,6 +485,15 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             thumbsFolder = self.thumbsFolder
         return os.path.join(thumbsFolder, thumbId + '.png')
 
+    def escapeLabel(self, label):
+        # A zero-width space is used to escape label metacharacters. Other means of
+        # escaping, such as "$LBRACKET", don't work in the context of ListItem labels.
+        return re.sub(u'[][$]', u'\\g<0>\u200B', label)
+
+    def escapeNotification(self, message):
+        # A notification needs to be encoded into a quoted byte string.
+        return message.encode('utf_8').replace('"', r'\"')
+
     def readBookmarks(self):
         try:
             return xml.etree.ElementTree.parse(self.bookmarksPath)
@@ -497,11 +506,6 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         if bookmark is None:
             raise ValueError('Unrecognized bookmark ID: ' + bookmarkId)
         return bookmark
-
-    def escapeLabel(self, label):
-        # A zero-width space is used to escape label metacharacters. Other means of
-        # escaping, such as "$LBRACKET", don't work in the context of ListItem labels.
-        return re.sub(u'[][$]', u'\\g<0>\u200B', label)
 
     def getBookmarkDirectoryItem(self, bookmarkId, title, thumbId):
         url = self.buildPluginUrl({'mode': 'launchBookmark', 'id': bookmarkId})
@@ -775,7 +779,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
         if not browserPath or not os.path.isfile(browserPath):
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
-                self.getLocalizedString(30005).replace(u'"', ur'\"')))
+                self.escapeNotification(self.getLocalizedString(30005))))
             self.openSettings()
             return
 
@@ -801,7 +805,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         except CompetingLaunchError:
             xbmc.log('A competing browser instance is already running')
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
-                self.getLocalizedString(30038).replace(u'"', ur'\"')))
+                self.escapeNotification(self.getLocalizedString(30038))))
 
 
 def parsedParams(search):

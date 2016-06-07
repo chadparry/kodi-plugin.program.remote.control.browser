@@ -103,14 +103,14 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         url = next(iter(params.get('url', [])), None)
 
         self.send_response(200)
-        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.end_headers()
 
         if url is None:
             url = ''
             status = ''
         else:
-            status = '<div id="status">{}</div>\n'.format(cgi.escape(self.server.addon.getLocalizedString(30034)))
+            status = u'<div id="status">{}</div>\n'.format(cgi.escape(self.server.addon.getLocalizedString(30034)))
 
         indexPath = os.path.join(self.server.addon.addonFolder, 'resources/data/index.html')
         self.serveTemplate(indexPath, {
@@ -140,7 +140,7 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.linkcast(url)
 
         self.send_response(200)
-        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.end_headers()
 
         closePath = os.path.join(self.server.addon.addonFolder, 'resources/data/close.html')
@@ -158,13 +158,13 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.linkcast(url)
 
         self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
         origin = self.headers.getheader('Origin')
         if origin is not None:
             self.send_header('Access-Control-Allow-Origin', origin)
         self.end_headers()
 
-        self.wfile.write('{}')
+        self.wfile.write(u'{}'.encode('utf_8'))
 
     def serveHtmlLinkcast(self, params):
         url = next(iter(params.get('url', [])), None)
@@ -187,8 +187,8 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def serveTemplate(self, path, params):
         META_VARIABLES = {
-            'LEFT_CURLY_BRACKET': '{{',
-            'RIGHT_CURLY_BRACKET': '}}',
+            'LEFT_CURLY_BRACKET': u'{{',
+            'RIGHT_CURLY_BRACKET': u'}}',
         }
         vars = dict(META_VARIABLES.items() + params.items())
         def repl(match):
@@ -196,8 +196,8 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         with open(path) as file:
             template = file.read()
-        expanded = re.sub('{{([^{}]+)}}', repl, template)
-        self.wfile.write(expanded)
+        expanded = re.sub(u'{{([^{}]+)}}', repl, template)
+        self.wfile.write(expanded.encode('utf_8'))
 
     def linkcast(self, url):
         plugin = self.server.addon.buildPluginUrl({'mode': 'linkcast', 'url': url})
