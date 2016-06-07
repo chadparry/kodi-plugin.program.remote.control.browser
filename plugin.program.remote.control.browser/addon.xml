@@ -11,8 +11,14 @@
     <extension point="xbmc.addon.metadata">
         <platform>linux osx</platform>
         <summary lang="en">Browse websites with a remote control</summary>
-        <language></language>
+        <summary lang="en_US">Browse websites with a remote control</summary>
+        <summary lang="de_DE">Surfen auf Webseiten mit einer Fernbedienung</summary>
+        <summary lang="pt_BR">Navegar em sites com um controle remoto</summary>
+        <language>en en_US de_DE pt_BR</language>
         <description lang="en">Browse websites with a remote control</description>
+        <description lang="en_US">Browse websites with a remote control</description>
+        <description lang="de_DE">Surfen auf Webseiten mit einer Fernbedienung</description>
+        <description lang="pt_BR">Navegar em sites com um controle remoto</description>
         <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
         <source>https://github.com/chadparry/kodi-plugin.program.remote.control.browser</source>
         <forum></forum>
