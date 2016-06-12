@@ -773,9 +773,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
     def launchUrl(self, url, lircConfig):
         browserLockPath = os.path.join(self.profileFolder, 'browser.pid')
-        browserPath = self.getSetting('browserPath')
-        browserArgs = self.getSetting('browserArgs')
-        xdotoolPath = self.getSetting('xdotoolPath')
+        browserPath = self.getSetting('browserPath').decode('utf_8')
+        browserArgs = self.getSetting('browserArgs').decode('utf_8')
+        xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
 
         if not browserPath or not os.path.isfile(browserPath):
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
