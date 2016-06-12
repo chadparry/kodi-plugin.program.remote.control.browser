@@ -235,7 +235,7 @@ def runBrowser(browserCmd):
     with contextlib.closing(sink), contextlib.closing(source):
         waiter = None
         try:
-            if xbmc.getCondVisibility('system.platform.windows'):
+            if xbmc.getCondVisibility('System.Platform.Windows'):
                 # On Windows, the Popen will block unless close_fds is True and
                 # creationflags is DETACHED_PROCESS.
                 xbmc.log('Using Windows creation flags', xbmc.LOGDEBUG)
@@ -797,7 +797,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
 
         player = xbmc.Player()
-        if player.isPlaying():
+        if player.isPlaying() and not xbmc.getCondVisibility('Player.Paused'):
             player.pause()
 
         try:
