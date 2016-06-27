@@ -176,6 +176,13 @@ class InterminableProgressBar:
         self.dialog.update(int(percentage))
 
 
+def makedirs(folder):
+    try:
+        os.makedirs(folder)
+    except OSError:
+        # The directory may already exist.
+        xbmc.log('Failed to create directory: ' + folder, xbmc.LOGDEBUG)
+
 @contextlib.contextmanager
 def suspendXbmcLirc():
     xbmc.log('Suspending XBMC LIRC', xbmc.LOGDEBUG)
@@ -332,6 +339,7 @@ def raiseBrowser(pid, xdotoolPath):
 def lockPidfile(browserLockPath, pid):
     isMine = False
     try:
+        makedirs(os.path.dirname(browserLockPath))
         try:
             pidfile = os.open(browserLockPath, os.O_RDWR | os.O_CREAT | os.O_EXCL)
         except OSError as e:
@@ -355,10 +363,10 @@ def lockPidfile(browserLockPath, pid):
 def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath):
     with (
             suspendXbmcLirc()), (
-            runBrowser(browserCmd)) as (browser, browserExitFd), (
-            lockPidfile(browserLockPath, browser.pid)), (
             runPylirc(lircConfig)) as lircFd, (
             KodiMixer()) as mixer, (
+            runBrowser(browserCmd)) as (browser, browserExitFd), (
+            lockPidfile(browserLockPath, browser.pid)), (
             raiseBrowser(browser.pid, xdotoolPath)):
 
         releaseKeyTime = None
@@ -471,14 +479,6 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             params=None,
             query=urllib.urlencode(query),
             fragment=None).geturl()
-
-    def makedirs(self, folder):
-        try:
-            os.makedirs(folder)
-        except OSError:
-            # The directory may already exist.
-            xbmc.log('Failed to create directory: ' + folder, xbmc.LOGDEBUG)
-            pass
 
     def getThumbPath(self, thumbId, thumbsFolder=None):
         if thumbsFolder is None:
@@ -623,7 +623,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             if isAborting.is_set():
                 xbmc.log('Aborting creation of thumbs folder', xbmc.LOGINFO)
                 return
-            self.makedirs(self.thumbsFolder)
+            makedirs(self.thumbsFolder)
 
             # The Pillow module needs to be isolated to its own subprocess because
             # many distributions are prone to deadlock.
@@ -716,7 +716,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             bookmark.set('thumb', thumbId)
         else:
             removeThumbId = None
-        self.makedirs(self.profileFolder)
+        makedirs(self.profileFolder)
         tree.write(self.bookmarksPath)
         xbmc.executebuiltin('Container.Refresh')
         if removeThumbId is not None:
@@ -746,7 +746,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         tree = self.readBookmarks()
         bookmark = self.getBookmarkElement(tree, bookmarkId)
         bookmark.set('lircrc', lircrc)
-        self.makedirs(self.profileFolder)
+        makedirs(self.profileFolder)
         tree.write(self.bookmarksPath)
 
     def removeBookmark(self, bookmarkId):
@@ -754,7 +754,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         bookmark = self.getBookmarkElement(tree, bookmarkId)
         thumbId = bookmark.get('thumb')
         tree.getroot().remove(bookmark)
-        self.makedirs(self.profileFolder)
+        makedirs(self.profileFolder)
         tree.write(self.bookmarksPath)
         self.removeThumb(thumbId)
 

@@ -351,7 +351,7 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
 
         tree = xml.etree.ElementTree.ElementTree(root)
         settingsPath = os.path.join(self.addonFolder, 'resources/settings.xml')
-        tree.write(settingsPath, encoding='utf-8', xml_declaration=True)
+        tree.write(settingsPath, encoding='UTF-8', xml_declaration=True)
 
     def reloadLinkcastServer(self):
         linkcastEnabled = self.unmarshalBool(self.getSetting('linkcastEnabled'))
