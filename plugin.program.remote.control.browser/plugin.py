@@ -363,10 +363,10 @@ def lockPidfile(browserLockPath, pid):
 def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath):
     with (
             suspendXbmcLirc()), (
-            runBrowser(browserCmd)) as (browser, browserExitFd), (
-            lockPidfile(browserLockPath, browser.pid)), (
             runPylirc(lircConfig)) as lircFd, (
             KodiMixer()) as mixer, (
+            runBrowser(browserCmd)) as (browser, browserExitFd), (
+            lockPidfile(browserLockPath, browser.pid)), (
             raiseBrowser(browser.pid, xdotoolPath)):
 
         releaseKeyTime = None
