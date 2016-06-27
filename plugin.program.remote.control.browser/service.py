@@ -43,7 +43,7 @@ DetectedDefaults = collections.namedtuple('DetectedDefaults', ('browserPath', 'b
 class LinkcastMonitor(xbmc.Monitor):
 
     def __init__(self, addon):
-        xbmc.Monitor.__init__(self)
+        super(LinkcastMonitor, self).__init__()
         self.addon = addon
 
     def onSettingsChanged(self):
