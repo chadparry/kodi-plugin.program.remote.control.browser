@@ -22,7 +22,6 @@ begin
     config = KEY Up
     repeat = 2
     delay = 5
-    flags = quit
 end
 
 begin
@@ -32,7 +31,6 @@ begin
     config = KEY Down
     repeat = 2
     delay = 5
-    flags = quit
 end
 
 begin
@@ -52,7 +50,6 @@ begin
     config = KEY Left
     repeat = 2
     delay = 5
-    flags = quit
 end
 
 begin
@@ -62,7 +59,6 @@ begin
     config = KEY Right
     repeat = 2
     delay = 5
-    flags = quit
 end
 
 begin
@@ -72,7 +68,6 @@ begin
     config = KEY H
     repeat = 0
     delay = 0
-    flags = quit
 end
 
 begin
@@ -141,6 +136,53 @@ begin
     button = More
     config = KEY G
     repeat = 0
+    delay = 0
+    flags = quit
+end
+
+# Suppress the regular mouse controls.
+
+begin
+    remote = mceusb
+    prog = browser
+    button = KEY_UP
+    repeat = 1
+    delay = 0
+    flags = quit
+end
+
+begin
+    remote = mceusb
+    prog = browser
+    button = KEY_DOWN
+    repeat = 1
+    delay = 0
+    flags = quit
+end
+
+begin
+    remote = mceusb
+    prog = browser
+    button = KEY_LEFT
+    repeat = 1
+    delay = 0
+    flags = quit
+end
+
+begin
+    remote = mceusb
+    prog = browser
+    button = KEY_RIGHT
+    repeat = 1
+    delay = 0
+    flags = quit
+end
+
+begin
+    remote = mceusb
+    prog = browser
+    button = KEY_AGAIN
+    repeat = 1
     delay = 0
     flags = quit
 end
