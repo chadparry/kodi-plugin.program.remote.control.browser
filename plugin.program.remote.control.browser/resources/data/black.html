@@ -18,7 +18,11 @@
             var query = window.location.search.substring(1);
             var url = window.decodeURIComponent(query.replace(/\+/g, '%20'))
             if (url) {
-                window.location.href = url;
+                // Allow the page to render before redirecting.
+                window.setTimeout(
+                    function() {
+                        window.location.href = url;
+                    });
             }
         </script>
     </head>
