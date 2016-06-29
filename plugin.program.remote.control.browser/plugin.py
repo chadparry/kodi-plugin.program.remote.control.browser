@@ -360,6 +360,39 @@ def lockPidfile(browserLockPath, pid):
                 xbmc.log('Failed to remove pidfile: ' + str(e))
 
 
+def monitorKodiDaemon(abortSocket, stopEvent):
+    monitor = xbmc.Monitor()
+    while not stopEvent.is_set() and not monitor.abortRequested():
+        # The only way to register for an event is to use this blocking
+        # method, even though that prevents this thread from waiting on the
+        # stop event.
+        monitor.waitForAbort(1)
+    try:
+        abortSocket.shutdown(socket.SHUT_RDWR)
+    except socket.error:
+        # The socket may already be closed.
+        pass
+
+
+@contextlib.contextmanager
+def abortContext():
+    stopEvent = threading.Event()
+    (sink, source) = socket.socketpair()
+    with contextlib.closing(sink), contextlib.closing(source):
+        # Monitor Kodi and kick the socket when it exits.
+        waiter = threading.Thread(target=monitorKodiDaemon, args=(source, stopEvent))
+        # The waiter is a daemon so that the main thread does not have to wait
+        # for it to finish.
+        waiter.daemon = True
+        waiter.start()
+        try:
+            yield sink.fileno()
+        finally:
+            # The monitor daemon is not joined because it takes a second to
+            # terminate.
+            stopEvent.set()
+
+
 def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath):
     with (
             suspendXbmcLirc()), (
@@ -367,8 +400,12 @@ def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath
             KodiMixer()) as mixer, (
             runBrowser(browserCmd)) as (browser, browserExitFd), (
             lockPidfile(browserLockPath, browser.pid)), (
-            raiseBrowser(browser.pid, xdotoolPath)):
+            raiseBrowser(browser.pid, xdotoolPath)), (
+            abortContext()) as kodiAbortFd:
 
+        polling = [browserExitFd, kodiAbortFd]
+        if lircFd is not None:
+            polling.append(lircFd)
         releaseKeyTime = None
         repeatKeys = None
         isExiting = False
@@ -377,12 +414,12 @@ def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath
                 timeout = None
             else:
                 timeout = max((releaseKeyTime - datetime.datetime.now()).total_seconds(), 0)
-            polling = [browserExitFd]
-            if lircFd is not None:
-                polling.append(lircFd)
             (rlist, wlist, xlist) = select.select(polling, [], [], timeout)
             if browserExitFd in rlist:
-                # The browser exited prematurely.
+                xbmc.log('Exiting because the browser stopped prematurely', xbmc.LOGINFO)
+                break
+            if kodiAbortFd in rlist:
+                xbmc.log('Exiting because Kodi is aborting', xbmc.LOGINFO)
                 break
             if lircFd is not None and lircFd in rlist:
                 buttons = pylirc.nextcode(True)
