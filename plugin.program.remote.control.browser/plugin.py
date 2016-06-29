@@ -42,7 +42,9 @@ except ImportError:
     pylirc = None
 
 
-DEFAULT_LIRC_CONFIG = 'special://home/addons/plugin.program.remote.control.browser/resources/data/lircd/browser.lirc'
+DEFAULT_LIRC_CONFIG = ('special://home/addons' +
+                       '/plugin.program.remote.control.browser' +
+                       '/resources/data/lircd/browser.lirc')
 VOLUME_MIN = 0L
 VOLUME_MAX = 100L
 DEFAULT_VOLUME_STEP = 1L
@@ -71,7 +73,8 @@ class KodiMixer:
             self.delegate = alsaaudio.Mixer()
         self.lastRpcId = 0
         try:
-            result = self.executeJSONRPC('Application.GetProperties',
+            result = self.executeJSONRPC(
+                'Application.GetProperties',
                 {'properties': ['muted', 'volume']})
             self.muted = bool(result['muted'])
             self.volume = int(result['volume'])
@@ -120,7 +123,8 @@ class KodiMixer:
 
     def toggleMute(self):
         try:
-            result = self.executeJSONRPC('Application.SetMute', {'mute': 'toggle'})
+            result = self.executeJSONRPC(
+                'Application.SetMute', {'mute': 'toggle'})
             self.muted = bool(result)
         except (JsonRpcError, ValueError) as e:
             xbmc.log('Could not toggle mute: ' + str(e))
@@ -130,7 +134,8 @@ class KodiMixer:
     def incrementVolume(self):
         self.muted = False
         try:
-            result = self.executeJSONRPC('Application.SetVolume', {'volume': 'increment'})
+            result = self.executeJSONRPC(
+                'Application.SetVolume', {'volume': 'increment'})
             self.volume = int(result)
         except (JsonRpcError, ValueError) as e:
             xbmc.log('Could not increase volume: ' + str(e))
@@ -140,7 +145,8 @@ class KodiMixer:
 
     def decrementVolume(self):
         try:
-            result = self.executeJSONRPC('Application.SetVolume', {'volume': 'decrement'})
+            result = self.executeJSONRPC(
+                'Application.SetVolume', {'volume': 'decrement'})
             self.volume = int(result)
         except (JsonRpcError, ValueError) as e:
             xbmc.log('Could not decrease volume: ' + str(e))
@@ -183,6 +189,7 @@ def makedirs(folder):
         # The directory may already exist.
         xbmc.log('Failed to create directory: ' + folder, xbmc.LOGDEBUG)
 
+
 @contextlib.contextmanager
 def suspendXbmcLirc():
     xbmc.log('Suspending XBMC LIRC', xbmc.LOGDEBUG)
@@ -200,7 +207,9 @@ def runPylirc(configuration):
         xbmc.log('Not initializing pylirc')
         yield
         return
-    xbmc.log('Initializing pylirc with configuration: ' + configuration, xbmc.LOGDEBUG)
+    xbmc.log(
+        'Initializing pylirc with configuration: ' + configuration,
+        xbmc.LOGDEBUG)
     fd = pylirc.init('browser', configuration)
     if not fd:
         raise RuntimeError('Failed to initialize pylirc')
@@ -249,11 +258,16 @@ def runBrowser(browserCmd):
                 creationflags = 0x00000008
             else:
                 creationflags = 0
-            xbmc.log('Launching browser: ' + ' '.join(pipes.quote(arg) for arg in browserCmd), xbmc.LOGINFO)
-            proc = subprocess.Popen(browserCmd, creationflags=creationflags, close_fds=True)
+            xbmc.log(
+                'Launching browser: ' +
+                ' '.join(pipes.quote(arg) for arg in browserCmd),
+                xbmc.LOGINFO)
+            proc = subprocess.Popen(
+                browserCmd, creationflags=creationflags, close_fds=True)
             try:
                 # Monitor the browser and kick the socket when it exits.
-                waiterStarting = threading.Thread(target=monitorProcess, args=(proc, source))
+                waiterStarting = threading.Thread(
+                    target=monitorProcess, args=(proc, source))
                 waiterStarting.start()
                 waiter = waiterStarting
 
@@ -265,9 +279,12 @@ def runBrowser(browserCmd):
 
                 # Give the browser a few seconds to shut down gracefully.
                 def terminateBrowser():
-                    xbmc.log('Forcefully killing the browser at the deadline', xbmc.LOGINFO)
+                    xbmc.log(
+                        'Forcefully killing the browser at the deadline',
+                        xbmc.LOGINFO)
                     killBrowser(proc, signal.SIGKILL)
-                terminator = threading.Timer(BROWSER_EXIT_DELAY.total_seconds(), terminateBrowser)
+                terminator = threading.Timer(
+                    BROWSER_EXIT_DELAY.total_seconds(), terminateBrowser)
                 terminator.start()
                 try:
                     proc.wait()
@@ -285,9 +302,11 @@ def runBrowser(browserCmd):
                     xbmc.log('Waited for the browser to die', xbmc.LOGDEBUG)
         finally:
             if waiter is not None:
-                xbmc.log('Joining with browser monitoring thread', xbmc.LOGDEBUG)
+                xbmc.log(
+                    'Joining with browser monitoring thread', xbmc.LOGDEBUG)
                 waiter.join()
-                xbmc.log('Joined with browser monitoring thread', xbmc.LOGDEBUG)
+                xbmc.log(
+                    'Joined with browser monitoring thread', xbmc.LOGDEBUG)
 
 
 def activateWindow(cmd, proc, isAborting, xdotoolPath):
@@ -317,11 +336,16 @@ def raiseBrowser(pid, xdotoolPath):
     activator = None
     # With the "sync" flag, the command could block indefinitely.
     cmd = [xdotoolPath, 'search', '--sync', '--onlyvisible', '--pid', str(pid)]
-    xbmc.log('Searching for browser PID: ' + ' '.join(pipes.quote(arg) for arg in cmd), xbmc.LOGINFO)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+    xbmc.log(
+        'Searching for browser PID: ' +
+        ' '.join(pipes.quote(arg) for arg in cmd),
+        xbmc.LOGINFO)
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, universal_newlines=True)
     try:
         isAborting = threading.Event()
-        activatorStarting = threading.Thread(target=activateWindow, args=(cmd, proc, isAborting, xdotoolPath))
+        activatorStarting = threading.Thread(
+            target=activateWindow, args=(cmd, proc, isAborting, xdotoolPath))
         activatorStarting.start()
         activator = activatorStarting
 
@@ -341,7 +365,8 @@ def lockPidfile(browserLockPath, pid):
     try:
         makedirs(os.path.dirname(browserLockPath))
         try:
-            pidfile = os.open(browserLockPath, os.O_RDWR | os.O_CREAT | os.O_EXCL)
+            pidfile = os.open(
+                browserLockPath, os.O_RDWR | os.O_CREAT | os.O_EXCL)
         except OSError as e:
             xbmc.log('Failed to acquire pidfile: ' + str(e), xbmc.LOGDEBUG)
             raise CompetingLaunchError()
@@ -360,15 +385,54 @@ def lockPidfile(browserLockPath, pid):
                 xbmc.log('Failed to remove pidfile: ' + str(e))
 
 
-def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath):
+def monitorKodiDaemon(abortSocket, stopEvent):
+    monitor = xbmc.Monitor()
+    while not stopEvent.is_set() and not monitor.abortRequested():
+        # The only way to register for an event is to use this blocking
+        # method, even though that prevents this thread from waiting on the
+        # stop event.
+        monitor.waitForAbort(1)
+    try:
+        abortSocket.shutdown(socket.SHUT_RDWR)
+    except socket.error:
+        # The socket may already be closed.
+        pass
+
+
+@contextlib.contextmanager
+def abortContext():
+    stopEvent = threading.Event()
+    (sink, source) = socket.socketpair()
+    with contextlib.closing(sink), contextlib.closing(source):
+        # Monitor Kodi and kick the socket when it exits.
+        waiter = threading.Thread(
+            target=monitorKodiDaemon, args=(source, stopEvent))
+        # The waiter is a daemon so that the main thread does not have to wait
+        # for it to finish.
+        waiter.daemon = True
+        waiter.start()
+        try:
+            yield sink.fileno()
+        finally:
+            # The monitor daemon is not joined because it takes a second to
+            # terminate.
+            stopEvent.set()
+
+
+def runRemoteControlBrowser(
+        browserCmd, browserLockPath, lircConfig, xdotoolPath):
     with (
             suspendXbmcLirc()), (
             runPylirc(lircConfig)) as lircFd, (
             KodiMixer()) as mixer, (
             runBrowser(browserCmd)) as (browser, browserExitFd), (
             lockPidfile(browserLockPath, browser.pid)), (
-            raiseBrowser(browser.pid, xdotoolPath)):
+            raiseBrowser(browser.pid, xdotoolPath)), (
+            abortContext()) as kodiAbortFd:
 
+        polling = [browserExitFd, kodiAbortFd]
+        if lircFd is not None:
+            polling.append(lircFd)
         releaseKeyTime = None
         repeatKeys = None
         isExiting = False
@@ -376,20 +440,26 @@ def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath
             if releaseKeyTime is None:
                 timeout = None
             else:
-                timeout = max((releaseKeyTime - datetime.datetime.now()).total_seconds(), 0)
-            polling = [browserExitFd]
-            if lircFd is not None:
-                polling.append(lircFd)
+                timeout = max(
+                    (releaseKeyTime - datetime.datetime.now()).total_seconds(),
+                    0)
             (rlist, wlist, xlist) = select.select(polling, [], [], timeout)
             if browserExitFd in rlist:
-                # The browser exited prematurely.
+                xbmc.log(
+                    'Exiting because the browser stopped prematurely',
+                    xbmc.LOGINFO)
+                break
+            if kodiAbortFd in rlist:
+                xbmc.log('Exiting because Kodi is aborting', xbmc.LOGINFO)
                 break
             if lircFd is not None and lircFd in rlist:
                 buttons = pylirc.nextcode(True)
             else:
                 buttons = None
-            codes = [PylircCode(**button) for button in buttons] if buttons else []
-            if releaseKeyTime is not None and releaseKeyTime <= datetime.datetime.now():
+            codes = ([PylircCode(**button) for button in buttons]
+                     if buttons else [])
+            if (releaseKeyTime is not None and
+                    releaseKeyTime <= datetime.datetime.now()):
                 codes.append(PylircCode(config='RELEASE', repeat=0))
 
             for code in codes:
@@ -413,9 +483,11 @@ def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath
                         isReleasing = True
                         repeatKeys = args
                         repeatIndex = 0
-                    nextReleaseKeyTime = datetime.datetime.now() + RELEASE_KEY_DELAY
+                    nextReleaseKeyTime = (datetime.datetime.now() +
+                                          RELEASE_KEY_DELAY)
                     current = args[repeatIndex % len(args)]
-                    inputs = ['key', '--clearmodifiers', '--', current, 'Shift+Left']
+                    inputs = [
+                        'key', '--clearmodifiers', '--', current, 'Shift+Left']
                 elif command == 'KEY':
                     isReleasing = True
                     inputs = ['key', '--clearmodifiers', '--'] + args
@@ -427,7 +499,11 @@ def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath
                     (horizontal, vertical) = args
                     acceleratedHorizontal = str(int(horizontal) * step ** 2)
                     acceleratedVertical = str(int(vertical) * step ** 2)
-                    inputs = ['mousemove_relative', '--', acceleratedHorizontal, acceleratedVertical]
+                    inputs = [
+                        'mousemove_relative',
+                        '--',
+                        acceleratedHorizontal,
+                        acceleratedVertical]
                 elif command == 'EXIT':
                     inputs = ['key', 'Alt+F4']
                     isExiting = True
@@ -439,10 +515,15 @@ def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath
                 if isReleasing and releaseKeyTime is not None:
                     if xdotoolPath:
                         # Deselect the current multi-tap character.
-                        xbmc.log('Executing xdotool for multi-tap release', xbmc.LOGDEBUG)
-                        subprocess.check_call([xdotoolPath, 'key', '--clearmodifiers', 'Right'])
+                        xbmc.log(
+                            'Executing xdotool for multi-tap release',
+                            xbmc.LOGDEBUG)
+                        subprocess.check_call(
+                            [xdotoolPath, 'key', '--clearmodifiers', 'Right'])
                     else:
-                        xbmc.log('Ignoring xdotool for multi-tap release', xbmc.LOGDEBUG)
+                        xbmc.log(
+                            'Ignoring xdotool for multi-tap release',
+                            xbmc.LOGDEBUG)
                 releaseKeyTime = nextReleaseKeyTime
 
                 if inputs is not None:
@@ -451,7 +532,9 @@ def runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath
                         xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
                         subprocess.check_call(cmd)
                     else:
-                        xbmc.log('Ignoring xdotool inputs: ' + str(inputs), xbmc.LOGDEBUG)
+                        xbmc.log(
+                            'Ignoring xdotool inputs: ' + str(inputs),
+                            xbmc.LOGDEBUG)
 
 
 class RemoteControlBrowserPlugin(xbmcaddon.Addon):
@@ -464,12 +547,16 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         super(RemoteControlBrowserPlugin, self).__init__()
         self.handle = handle
         self.pluginId = self.getAddonInfo('id')
-        self.addonFolder = xbmc.translatePath(self.getAddonInfo('path')).decode('utf_8')
-        self.profileFolder = xbmc.translatePath(self.getAddonInfo('profile')).decode('utf_8')
+        self.addonFolder = xbmc.translatePath(
+            self.getAddonInfo('path')).decode('utf_8')
+        self.profileFolder = xbmc.translatePath(
+            self.getAddonInfo('profile')).decode('utf_8')
         self.bookmarksPath = os.path.join(self.profileFolder, 'bookmarks.xml')
-        self.defaultBookmarksPath = os.path.join(self.addonFolder, 'resources/data/bookmarks.xml')
+        self.defaultBookmarksPath = os.path.join(
+            self.addonFolder, 'resources/data/bookmarks.xml')
         self.thumbsFolder = os.path.join(self.profileFolder, 'thumbs')
-        self.defaultThumbsFolder = os.path.join(self.addonFolder, 'resources/data/thumbs')
+        self.defaultThumbsFolder = os.path.join(
+            self.addonFolder, 'resources/data/thumbs')
 
     def buildPluginUrl(self, query):
         return urlparse.ParseResult(
@@ -486,8 +573,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         return os.path.join(thumbsFolder, thumbId + '.png')
 
     def escapeLabel(self, label):
-        # A zero-width space is used to escape label metacharacters. Other means of
-        # escaping, such as "$LBRACKET", don't work in the context of ListItem labels.
+        # A zero-width space is used to escape label metacharacters. Other
+        # means of escaping, such as "$LBRACKET", don't work in the context of
+        # ListItem labels.
         return re.sub(u'[][$]', u'\\g<0>\u200B', label)
 
     def escapeNotification(self, message):
@@ -498,7 +586,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         try:
             return xml.etree.ElementTree.parse(self.bookmarksPath)
         except (IOError, xml.etree.ElementTree.ParseError) as e:
-            xbmc.log('Falling back to default bookmarks: ' + str(e), xbmc.LOGDEBUG)
+            xbmc.log(
+                'Falling back to default bookmarks: ' + str(e), xbmc.LOGDEBUG)
             return xml.etree.ElementTree.parse(self.defaultBookmarksPath)
 
     def getBookmarkElement(self, tree, bookmarkId):
@@ -513,20 +602,25 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         if thumbId is not None:
             thumbPath = self.getThumbPath(thumbId)
             if not os.path.isfile(thumbPath):
-                thumbPath = self.getThumbPath(thumbId, self.defaultThumbsFolder)
+                thumbPath = self.getThumbPath(
+                    thumbId, self.defaultThumbsFolder)
             if os.path.isfile(thumbPath):
                 listItem.setArt({
                     'thumb': thumbPath,
                 })
         listItem.addContextMenuItems([
-            (self.getLocalizedString(30025), 'RunPlugin({})'.format(self.buildPluginUrl(
-                {'mode': 'launchBookmark', 'id': bookmarkId}))),
-            (self.getLocalizedString(30006), 'RunPlugin({})'.format(self.buildPluginUrl(
-                {'mode': 'editBookmark', 'id': bookmarkId}))),
-            (self.getLocalizedString(30027), 'RunPlugin({})'.format(self.buildPluginUrl(
-                {'mode': 'editKeymap', 'id': bookmarkId}))),
-            (self.getLocalizedString(30002), 'RunPlugin({})'.format(self.buildPluginUrl(
-                {'mode': 'removeBookmark', 'id': bookmarkId}))),
+            (self.getLocalizedString(30025),
+                'RunPlugin({})'.format(self.buildPluginUrl(
+                    {'mode': 'launchBookmark', 'id': bookmarkId}))),
+            (self.getLocalizedString(30006),
+                'RunPlugin({})'.format(self.buildPluginUrl(
+                    {'mode': 'editBookmark', 'id': bookmarkId}))),
+            (self.getLocalizedString(30027),
+                'RunPlugin({})'.format(self.buildPluginUrl(
+                    {'mode': 'editKeymap', 'id': bookmarkId}))),
+            (self.getLocalizedString(30002),
+                'RunPlugin({})'.format(self.buildPluginUrl(
+                    {'mode': 'removeBookmark', 'id': bookmarkId}))),
         ])
         return (url, listItem)
 
@@ -539,13 +633,15 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             for bookmark in tree.iter('bookmark')]
 
         url = self.buildPluginUrl({'mode': 'addBookmark'})
-        listItem = xbmcgui.ListItem(u'[B]{}[/B]'.format(self.getLocalizedString(30001)))
+        listItem = xbmcgui.ListItem(
+            u'[B]{}[/B]'.format(self.getLocalizedString(30001)))
         listItem.setArt({
             'thumb': 'DefaultFile.png',
         })
         items.append((url, listItem))
 
-        success = xbmcplugin.addDirectoryItems(handle=self.handle, items=items, totalItems=len(items))
+        success = xbmcplugin.addDirectoryItems(
+            handle=self.handle, items=items, totalItems=len(items))
         if not success:
             raise RuntimeError('Failed addDirectoryItem')
         xbmcplugin.endOfDirectory(self.handle)
@@ -555,10 +651,12 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             try:
                 os.remove(self.getThumbPath(thumbId))
             except OSError:
-                xbmc.log('Failed to remove thumbnail: ' + thumbId, xbmc.LOGINFO)
+                xbmc.log(
+                    'Failed to remove thumbnail: ' + thumbId, xbmc.LOGINFO)
                 pass
 
-    def scrapeWebpage(self, url, thumbId, isAborting, isTitleReady, fetchedTitleSlot):
+    def scrapeWebpage(
+            self, url, thumbId, isAborting, isTitleReady, fetchedTitleSlot):
         webpage = None
         try:
             try:
@@ -595,10 +693,14 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     linkElements,
                     key=lambda element: (
                         # Prefer large images.
-                        reduce(lambda prev, cur: prev * int(cur, 10), re.findall(r'\d+', element['sizes']), 1)
-                            if 'sizes' in element.attrs else 0,
+                        reduce(
+                            lambda prev, cur: prev * int(cur, 10),
+                            re.findall(r'\d+', element['sizes']),
+                            1)
+                        if 'sizes' in element.attrs else 0,
                         # Prefer PNG format.
-                        'type' in element.attrs and element['type'] == 'image/png',
+                        'type' in element.attrs and
+                        element['type'] == 'image/png',
                         # Prefer "icon" to "shortcut icon".
                         element['rel'] == ['icon']),
                     reverse=True)),
@@ -625,19 +727,21 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 return
             makedirs(self.thumbsFolder)
 
-            # The Pillow module needs to be isolated to its own subprocess because
-            # many distributions are prone to deadlock.
+            # The Pillow module needs to be isolated to its own subprocess
+            # because many distributions are prone to deadlock.
             retrievePath = os.path.join(self.addonFolder, 'retrieve.py')
             thumbPath = self.getThumbPath(thumbId)
             if isAborting.is_set():
                 xbmc.log('Aborting retrieval of favicon', xbmc.LOGINFO)
                 return
             xbmc.log('Retrieving favicon: ' + thumbUrl, xbmc.LOGINFO)
-            subprocess.check_call([sys.executable, retrievePath, thumbUrl, thumbPath])
+            subprocess.check_call(
+                [sys.executable, retrievePath, thumbUrl, thumbPath])
         except (ValueError, IOError, subprocess.CalledProcessError) as e:
             xbmc.log('Failed to retrieve favicon: ' + str(e))
 
-    def inputBookmark(self, bookmarkId=None, defaultUrl='http://', defaultTitle=None):
+    def inputBookmark(
+            self, bookmarkId=None, defaultUrl='http://', defaultTitle=None):
         keyboard = xbmc.Keyboard(defaultUrl, self.getLocalizedString(30004))
         keyboard.doModal()
         if not keyboard.isConfirmed():
@@ -649,29 +753,39 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         # old image would never be replaced.
         thumbId = str(uuid.uuid1())
 
-        # Asynchronously scrape information from the webpage while the user types.
+        # Asynchronously scrape information from the webpage while the user
+        # types.
         isAborting = threading.Event()
         isTitleReady = threading.Event()
         fetchedTitleSlot = []
-        scraper = threading.Thread(target=self.scrapeWebpage,
+        scraper = threading.Thread(
+            target=self.scrapeWebpage,
             args=(url, thumbId, isAborting, isTitleReady, fetchedTitleSlot))
         scraper.start()
         try:
             if defaultTitle is None:
                 if not isTitleReady.is_set():
                     xbmc.log('Waiting for scrape of title', xbmc.LOGDEBUG)
-                    with InterminableProgressBar(self.getLocalizedString(30029)) as progress:
-                        while not isTitleReady.wait(progress.DEFAULT_TICK_INTERVAL.total_seconds()):
+                    with InterminableProgressBar(
+                            self.getLocalizedString(30029)) as progress:
+                        while not isTitleReady.wait(
+                                progress.DEFAULT_TICK_INTERVAL
+                                .total_seconds()):
                             if progress.iscanceled():
-                                xbmc.log('User aborted scrape of title', xbmc.LOGDEBUG)
+                                xbmc.log(
+                                    'User aborted scrape of title',
+                                    xbmc.LOGDEBUG)
                                 return
                             progress.tick()
                 defaultTitle = next(iter(fetchedTitleSlot), None)
-                xbmc.log('Received scraped title: ' + str(defaultTitle), xbmc.LOGDEBUG)
+                xbmc.log(
+                    'Received scraped title: ' + str(defaultTitle),
+                    xbmc.LOGDEBUG)
                 if defaultTitle is None:
                     defaultTitle = urlparse.urlparse(url).netloc
 
-            keyboard = xbmc.Keyboard(defaultTitle, self.getLocalizedString(30003))
+            keyboard = xbmc.Keyboard(
+                defaultTitle, self.getLocalizedString(30003))
             keyboard.doModal()
             if not keyboard.isConfirmed():
                 xbmc.log('User aborted title input', xbmc.LOGDEBUG)
@@ -680,13 +794,17 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
             if scraper.isAlive():
                 xbmc.log('Waiting for scrape of thumbnail', xbmc.LOGDEBUG)
-                with InterminableProgressBar(self.getLocalizedString(30029)) as progress:
+                with InterminableProgressBar(
+                        self.getLocalizedString(30029)) as progress:
                     while True:
-                        scraper.join(progress.DEFAULT_TICK_INTERVAL.total_seconds())
+                        scraper.join(
+                            progress.DEFAULT_TICK_INTERVAL.total_seconds())
                         if not scraper.isAlive():
                             break
                         if progress.iscanceled():
-                            xbmc.log('User aborted scrape of thumbnail', xbmc.LOGDEBUG)
+                            xbmc.log(
+                                'User aborted scrape of thumbnail',
+                                xbmc.LOGDEBUG)
                             return
                         progress.tick()
                 xbmc.log('Finished scrape of thumbnail', xbmc.LOGDEBUG)
@@ -701,12 +819,15 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         tree = self.readBookmarks()
         if bookmarkId is None:
             bookmarkId = str(uuid.uuid1())
-            bookmark = xml.etree.ElementTree.SubElement(tree.getroot(), 'bookmark', {
-                'id': bookmarkId,
-                'title': title,
-                'url': url,
-                'lircrc': DEFAULT_LIRC_CONFIG,
-            })
+            bookmark = xml.etree.ElementTree.SubElement(
+                tree.getroot(),
+                'bookmark',
+                {
+                    'id': bookmarkId,
+                    'title': title,
+                    'url': url,
+                    'lircrc': DEFAULT_LIRC_CONFIG,
+                })
         else:
             bookmark = self.getBookmarkElement(tree, bookmarkId)
             bookmark.set('title', title)
@@ -728,7 +849,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
     def editBookmark(self, bookmarkId):
         tree = self.readBookmarks()
         bookmark = self.getBookmarkElement(tree, bookmarkId)
-        self.inputBookmark(bookmarkId, bookmark.get('url'), bookmark.get('title'))
+        self.inputBookmark(
+            bookmarkId, bookmark.get('url'), bookmark.get('title'))
 
     def editKeymap(self, bookmarkId):
         tree = self.readBookmarks()
@@ -801,7 +923,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             player.pause()
 
         try:
-            runRemoteControlBrowser(browserCmd, browserLockPath, lircConfig, xdotoolPath)
+            runRemoteControlBrowser(
+                browserCmd, browserLockPath, lircConfig, xdotoolPath)
         except CompetingLaunchError:
             xbmc.log('A competing browser instance is already running')
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
@@ -830,7 +953,9 @@ def getBookmarkId(args):
 
 
 def main():
-    xbmc.log('Plugin called: ' + ' '.join(pipes.quote(arg) for arg in sys.argv), xbmc.LOGDEBUG)
+    xbmc.log(
+        'Plugin called: ' + ' '.join(pipes.quote(arg) for arg in sys.argv),
+        xbmc.LOGDEBUG)
     parser = argparse.ArgumentParser()
     parser.add_argument('handle', type=int)
     parser.add_argument('params', type=parsedParams)
@@ -843,11 +968,13 @@ def main():
     HANDLERS = {
         'index': lambda args: plugin.index(),
         'linkcast': lambda args: plugin.linkcast(getUrl(args)),
-        'launchBookmark': lambda args: plugin.launchBookmark(getBookmarkId(args)),
+        'launchBookmark': lambda args: plugin.launchBookmark(
+            getBookmarkId(args)),
         'addBookmark': lambda args: plugin.addBookmark(),
         'editBookmark': lambda args: plugin.editBookmark(getBookmarkId(args)),
         'editKeymap': lambda args: plugin.editKeymap(getBookmarkId(args)),
-        'removeBookmark': lambda args: plugin.removeBookmark(getBookmarkId(args)),
+        'removeBookmark': lambda args: plugin.removeBookmark(
+            getBookmarkId(args)),
     }
     handler = HANDLERS.get(mode)
     if handler is None:

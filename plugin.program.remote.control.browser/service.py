@@ -37,13 +37,14 @@ except ImportError:
 DEFAULT_LINKCAST_PORT = 49029
 
 
-DetectedDefaults = collections.namedtuple('DetectedDefaults', ('browserPath', 'browserArgs', 'xdotoolPath'))
+DetectedDefaults = collections.namedtuple(
+    'DetectedDefaults', ('browserPath', 'browserArgs', 'xdotoolPath'))
 
 
 class LinkcastMonitor(xbmc.Monitor):
 
     def __init__(self, addon):
-        xbmc.Monitor.__init__(self)
+        super(LinkcastMonitor, self).__init__()
         self.addon = addon
 
     def onSettingsChanged(self):
@@ -53,7 +54,8 @@ class LinkcastMonitor(xbmc.Monitor):
 class LinkcastServer(BaseHTTPServer.HTTPServer):
 
     def __init__(self, addon, server_address):
-        BaseHTTPServer.HTTPServer.__init__(self, server_address, LinkcastRequestHandler)
+        BaseHTTPServer.HTTPServer.__init__(
+            self, server_address, LinkcastRequestHandler)
         self.addon = addon
 
 
@@ -110,17 +112,24 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             url = ''
             status = ''
         else:
-            status = u'<div id="status">{}</div>\n'.format(cgi.escape(self.server.addon.getLocalizedString(30034)))
+            status = u'<div id="status">{}</div>\n'.format(
+                cgi.escape(self.server.addon.getLocalizedString(30034)))
 
-        indexPath = os.path.join(self.server.addon.addonFolder, 'resources/data/index.html')
+        indexPath = os.path.join(
+            self.server.addon.addonFolder, 'resources/data/index.html')
         self.serveTemplate(indexPath, {
-            'TITLE_HTML': cgi.escape(self.server.addon.getLocalizedString(30032)),
-            'SUBTITLE_HTML': cgi.escape(self.server.addon.getLocalizedString(30033)),
+            'TITLE_HTML': cgi.escape(
+                self.server.addon.getLocalizedString(30032)),
+            'SUBTITLE_HTML': cgi.escape(
+                self.server.addon.getLocalizedString(30033)),
             'STATUS': status,
             'URL_ATTR': cgi.escape(url, quote=True),
-            'SUBMIT_ATTR': cgi.escape(self.server.addon.getLocalizedString(30035), quote=True),
-            'INSTRUCTIONS_HTML': cgi.escape(self.server.addon.getLocalizedString(30036)),
-            'UNSUPPORTED_SCHEME_CSTR': json.dumps(self.server.addon.getLocalizedString(30037)),
+            'SUBMIT_ATTR': cgi.escape(
+                self.server.addon.getLocalizedString(30035), quote=True),
+            'INSTRUCTIONS_HTML': cgi.escape(
+                self.server.addon.getLocalizedString(30036)),
+            'UNSUPPORTED_SCHEME_CSTR': json.dumps(
+                self.server.addon.getLocalizedString(30037)),
         })
 
     def serveCloseLinkcast(self, params):
@@ -143,9 +152,11 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.end_headers()
 
-        closePath = os.path.join(self.server.addon.addonFolder, 'resources/data/close.html')
+        closePath = os.path.join(
+            self.server.addon.addonFolder, 'resources/data/close.html')
         self.serveTemplate(closePath, {
-            'TITLE_HTML': cgi.escape(self.server.addon.getLocalizedString(30032)),
+            'TITLE_HTML': cgi.escape(
+                self.server.addon.getLocalizedString(30032)),
         })
 
     def serveXhpLinkcast(self, params):
@@ -191,6 +202,7 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             'RIGHT_CURLY_BRACKET': u'}}',
         }
         vars = dict(META_VARIABLES.items() + params.items())
+
         def repl(match):
             return vars[match.group(1)]
 
@@ -200,7 +212,8 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.wfile.write(expanded.encode('utf_8'))
 
     def linkcast(self, url):
-        plugin = self.server.addon.buildPluginUrl({'mode': 'linkcast', 'url': url})
+        plugin = self.server.addon.buildPluginUrl(
+            {'mode': 'linkcast', 'url': url})
         xbmc.log('Running plugin: ' + plugin)
         xbmc.executebuiltin('RunPlugin({})'.format(plugin))
 
@@ -232,8 +245,10 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
     def __init__(self):
         super(RemoteControlBrowserService, self).__init__()
         self.pluginId = self.getAddonInfo('id')
-        self.addonFolder = xbmc.translatePath(self.getAddonInfo('path')).decode('utf_8')
-        self.profileFolder = xbmc.translatePath(self.getAddonInfo('profile')).decode('utf_8')
+        self.addonFolder = xbmc.translatePath(
+            self.getAddonInfo('path')).decode('utf_8')
+        self.profileFolder = xbmc.translatePath(
+            self.getAddonInfo('profile')).decode('utf_8')
         self.settingsChangeLock = threading.Lock()
         self.isShutdown = False
         self.linkcastServer = None
@@ -257,7 +272,8 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             fragment=None).geturl()
 
     def getDefaults(self):
-        dependenciesPath = os.path.join(self.addonFolder, 'resources/data/dependencies.xml')
+        dependenciesPath = os.path.join(
+            self.addonFolder, 'resources/data/dependencies.xml')
         tree = xml.etree.ElementTree.parse(dependenciesPath)
 
         for platform in tree.iter('platform'):
@@ -279,19 +295,19 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
         raise RuntimeError('Platform not supported')
 
     def marshalBool(self, val):
-        BOOL_ENCODING = { False: 'false', True: 'true' }
+        BOOL_ENCODING = {False: 'false', True: 'true'}
         return BOOL_ENCODING[bool(val)]
 
     def unmarshalBool(self, val):
-        STRING_ENCODING = { 'false': False, 'true': True }
+        STRING_ENCODING = {'false': False, 'true': True}
         unmarshalled = STRING_ENCODING.get(val)
         if unmarshalled is None:
             raise ValueError('Invalid Boolean: ' + str(val))
         return unmarshalled
 
     def isPillowInstalled(self):
-        # The Pillow module needs to be isolated to its own subprocess because many
-        # distributions are prone to deadlock.
+        # The Pillow module needs to be isolated to its own subprocess because
+        # many distributions are prone to deadlock.
         importPath = os.path.join(self.addonFolder, 'import.py')
         try:
             subprocess.check_call([sys.executable, importPath])
@@ -302,59 +318,61 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
     def generateSettings(self):
         xbmc.log('Generating default addon settings')
         root = xml.etree.ElementTree.Element('settings')
-        dependencies = xml.etree.ElementTree.SubElement(root, 'category', {'label': '30018'})
+        dependencies = xml.etree.ElementTree.SubElement(
+            root, 'category', {'label': '30018'})
         defaults = self.getDefaults()
 
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'id': 'browserPath',
             'type': 'executable',
             'label': '30019',
-            'default': defaults.browserPath })
+            'default': defaults.browserPath})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'id': 'browserArgs',
             'type': 'text',
             'label': '30020',
-            'default': defaults.browserArgs })
+            'default': defaults.browserArgs})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'id': 'xdotoolPath',
             'type': 'executable',
             'label': '30021',
-            'default': defaults.xdotoolPath })
+            'default': defaults.xdotoolPath})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'id': 'linkcastEnabled',
             'type': 'bool',
             'label': '30030',
-            'default': self.marshalBool(False) })
+            'default': self.marshalBool(False)})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'id': 'linkcastPort',
             'type': 'number',
             'label': '30031',
             'subsetting': self.marshalBool(True),
             'enable': 'eq(-1,true)',
-            'default': str(DEFAULT_LINKCAST_PORT) })
+            'default': str(DEFAULT_LINKCAST_PORT)})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'type': 'lsep',
             'label': '30022',
-            'visible': self.marshalBool(not psutil) })
+            'visible': self.marshalBool(not psutil)})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'type': 'lsep',
             'label': '30023',
-            'visible': self.marshalBool(not alsaaudio) })
+            'visible': self.marshalBool(not alsaaudio)})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'type': 'lsep',
             'label': '30024',
-            'visible': self.marshalBool(not pylirc) })
+            'visible': self.marshalBool(not pylirc)})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'type': 'lsep',
             'label': '30026',
-            'visible': self.marshalBool(not self.isPillowInstalled()) })
+            'visible': self.marshalBool(not self.isPillowInstalled())})
 
         tree = xml.etree.ElementTree.ElementTree(root)
         settingsPath = os.path.join(self.addonFolder, 'resources/settings.xml')
         tree.write(settingsPath, encoding='UTF-8', xml_declaration=True)
 
     def reloadLinkcastServer(self):
-        linkcastEnabled = self.unmarshalBool(self.getSetting('linkcastEnabled'))
+        linkcastEnabled = self.unmarshalBool(
+            self.getSetting('linkcastEnabled'))
         xbmc.log('Linkcast is enabled: ' + str(linkcastEnabled), xbmc.LOGDEBUG)
         with self.settingsChangeLock:
             if linkcastEnabled:
@@ -375,7 +393,8 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
         except IOError as e:
             xbmc.log('Could not start linkcast server: ' + str(e))
 
-        threadStarting = threading.Thread(target=self.linkcastServer.serve_forever)
+        threadStarting = threading.Thread(
+            target=self.linkcastServer.serve_forever)
         threadStarting.start()
         self.linkcastServerThread = threadStarting
 
