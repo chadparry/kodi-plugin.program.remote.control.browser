@@ -1,11 +1,2 @@
-0.4.0
-- Support Linkcast
-
-0.3.0
-- Support customized keymaps
-
-0.2.0
-- Support a remote control
-
-0.1.0
-- Port of program plugin.program.browser.launcher 1.1.5
+1.0.0
+- Initial public release
