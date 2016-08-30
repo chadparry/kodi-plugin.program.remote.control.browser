@@ -505,8 +505,8 @@ def runRemoteControlBrowser(
                         acceleratedHorizontal,
                         acceleratedVertical]
                 elif command == 'EXIT':
-                    inputs = ['key', 'Alt+F4']
                     isExiting = True
+                    break
                 elif command == 'RELEASE':
                     isReleasing = True
                 else:
