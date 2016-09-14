@@ -1,7 +1,7 @@
 # XBMC Media Center language file
 # Addon Name: Remote Control Browser
 # Addon id: plugin.program.remote.control.browser
-# Addon version: 0.4.0
+# Addon version: 1.0.1
 # Addon Provider: Chad Parry
 msgid ""
 msgstr ""
