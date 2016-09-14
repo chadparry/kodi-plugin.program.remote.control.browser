@@ -230,7 +230,11 @@ def getProcessTree(parent):
         return [parent]
     try:
         process = psutil.Process(parent)
-        processes = [process] + process.get_children(recursive=True)
+        try:
+            children = process.children
+        except AttributeError:
+            children = process.get_children
+        processes = [process] + children(recursive=True)
         return [node.pid for node in processes]
     except psutil.NoSuchProcess:
         xbmc.log('Failed to find process tree', xbmc.LOGDEBUG)
@@ -505,8 +509,8 @@ def runRemoteControlBrowser(
                         acceleratedHorizontal,
                         acceleratedVertical]
                 elif command == 'EXIT':
-                    inputs = ['key', 'Alt+F4']
                     isExiting = True
+                    break
                 elif command == 'RELEASE':
                     isReleasing = True
                 else:

@@ -81,11 +81,11 @@
 
         <script>
             var template = window.document.getElementById('template').innerHTML;
-            var params = JSON.stringify({'origin': window.location.origin})
+            var params = JSON.stringify({'origin': window.location.origin});
             var expanded = template.replace(/{{LEFT_CURLY_BRACKET}}PARAMS{{RIGHT_CURLY_BRACKET}}/g, params);
 
             var bookmarklet = window.document.getElementById('bookmarklet');
-            bookmarklet.href = 'javascript:' + expanded
+            bookmarklet.href = 'javascript:' + expanded;
 
             var placeholder = window.document.getElementById('placeholder');
             placeholder.style.display = 'block';
