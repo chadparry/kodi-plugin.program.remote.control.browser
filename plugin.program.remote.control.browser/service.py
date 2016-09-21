@@ -350,6 +350,11 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             'enable': 'eq(-1,true)',
             'default': str(DEFAULT_LINKCAST_PORT)})
         xml.etree.ElementTree.SubElement(dependencies, 'setting', {
+            'id': 'suspendKodi',
+            'type': 'bool',
+            'label': '30040',
+            'default': self.marshalBool(False)})
+        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
             'type': 'lsep',
             'label': '30022',
             'visible': self.marshalBool(not psutil)})

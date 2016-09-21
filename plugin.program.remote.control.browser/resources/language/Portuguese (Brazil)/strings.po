@@ -1,7 +1,7 @@
 # XBMC Media Center language file
 # Addon Name: Remote Control Browser
 # Addon id: plugin.program.remote.control.browser
-# Addon version: 1.0.1
+# Addon version: 1.1.0
 # Addon Provider: Chad Parry
 msgid ""
 msgstr ""
@@ -128,3 +128,11 @@ msgstr "O Kodi Linkcast não suporta o esquema: %(url)s"
 msgctxt "#30038"
 msgid "Browser already running!"
 msgstr "Navegador já em execução!"
+
+msgctxt "#30039"
+msgid "Browser reported an error!"
+msgstr "Navegador relatou um erro!"
+
+msgctxt "#30040"
+msgid "Suspend Kodi During Browsing"
+msgstr "Suspender Kodi Durante a Navegação"

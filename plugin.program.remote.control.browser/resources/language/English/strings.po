@@ -1,7 +1,7 @@
 # XBMC Media Center language file
 # Addon Name: Remote Control Browser
 # Addon id: plugin.program.remote.control.browser
-# Addon version: 1.0.1
+# Addon version: 1.1.0
 # Addon Provider: Chad Parry
 msgid ""
 msgstr ""
@@ -129,4 +129,12 @@ msgstr ""
 
 msgctxt "#30038"
 msgid "Browser already running!"
+msgstr ""
+
+msgctxt "#30039"
+msgid "Browser reported an error!"
+msgstr ""
+
+msgctxt "#30040"
+msgid "Suspend Kodi During Browsing"
 msgstr ""

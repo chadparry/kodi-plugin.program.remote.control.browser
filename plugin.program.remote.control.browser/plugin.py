@@ -1,17 +1,12 @@
 import argparse
 import bs4
-import collections
 import contextlib
 import datetime
-import json
 import math
 import os
 import pipes
 import re
-import select
 import shlex
-import signal
-import socket
 import subprocess
 import sys
 import threading
@@ -26,133 +21,13 @@ import xbmcaddon
 import xml.etree.ElementTree
 
 
-# If any of these packages are missing, the script will attempt to proceed
-# without those features.
-try:
-    import alsaaudio
-except ImportError:
-    alsaaudio = None
-try:
-    import psutil
-except ImportError:
-    psutil = None
-try:
-    import pylirc
-except ImportError:
-    pylirc = None
-
-
 DEFAULT_LIRC_CONFIG = ('special://home/addons' +
                        '/plugin.program.remote.control.browser' +
                        '/resources/data/lircd/browser.lirc')
-VOLUME_MIN = 0L
-VOLUME_MAX = 100L
-DEFAULT_VOLUME_STEP = 1L
-RELEASE_KEY_DELAY = datetime.timedelta(seconds=1)
-BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
-
-
-PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
-
-
-class JsonRpcError(RuntimeError):
-    pass
 
 
 class CompetingLaunchError(RuntimeError):
     pass
-
-
-class KodiMixer:
-    """Mixer that integrates tightly with Kodi volume controls"""
-
-    def __init__(self):
-        if alsaaudio is None:
-            xbmc.log('Not initializing an alsaaudio mixer')
-        else:
-            self.delegate = alsaaudio.Mixer()
-        self.lastRpcId = 0
-        try:
-            result = self.executeJSONRPC(
-                'Application.GetProperties',
-                {'properties': ['muted', 'volume']})
-            self.muted = bool(result['muted'])
-            self.volume = int(result['volume'])
-        except (JsonRpcError, KeyError, ValueError) as e:
-            xbmc.log('Could not retrieve current volume: ' + str(e))
-            self.muted = False
-            self.volume = VOLUME_MAX
-
-    def __enter__(self):
-        if alsaaudio is not None:
-            self.original = self.delegate.getvolume()
-        # Match the current volume to Kodi's last volume.
-        self.realizeVolume()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Restore the master volume to its original level.
-        if alsaaudio is not None:
-            for (channel, volume) in enumerate(self.original):
-                self.delegate.setvolume(volume, channel)
-
-    def getNextRpcId(self):
-        self.lastRpcId = self.lastRpcId + 1
-        return self.lastRpcId
-
-    def executeJSONRPC(self, method, params):
-        response = xbmc.executeJSONRPC(json.dumps({
-            'jsonrpc': '2.0',
-            'method': method,
-            'params': params,
-            'id': self.getNextRpcId()}))
-        try:
-            return json.loads(response)['result']
-        except (KeyError, ValueError):
-            raise JsonRpcError('Invalid JSON RPC response: ' + repr(response))
-
-    def realizeVolume(self):
-        # Muting the Master volume and then unmuting it is not a symmetric
-        # operation, because other controls end up muted. So a mute needs to be
-        # simulated by setting the volume level to zero.
-        if alsaaudio is not None:
-            if self.muted:
-                self.delegate.setvolume(0)
-            else:
-                self.delegate.setvolume(self.volume)
-
-    def toggleMute(self):
-        try:
-            result = self.executeJSONRPC(
-                'Application.SetMute', {'mute': 'toggle'})
-            self.muted = bool(result)
-        except (JsonRpcError, ValueError) as e:
-            xbmc.log('Could not toggle mute: ' + str(e))
-            self.muted = not self.muted
-        self.realizeVolume()
-
-    def incrementVolume(self):
-        self.muted = False
-        try:
-            result = self.executeJSONRPC(
-                'Application.SetVolume', {'volume': 'increment'})
-            self.volume = int(result)
-        except (JsonRpcError, ValueError) as e:
-            xbmc.log('Could not increase volume: ' + str(e))
-            self.volume = min(self.volume + DEFAULT_VOLUME_STEP, VOLUME_MAX)
-        if alsaaudio is not None:
-            self.delegate.setvolume(self.volume)
-
-    def decrementVolume(self):
-        try:
-            result = self.executeJSONRPC(
-                'Application.SetVolume', {'volume': 'decrement'})
-            self.volume = int(result)
-        except (JsonRpcError, ValueError) as e:
-            xbmc.log('Could not decrease volume: ' + str(e))
-            self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
-        if alsaaudio is not None and not self.muted:
-            self.delegate.setvolume(self.volume)
 
 
 class InterminableProgressBar:
@@ -190,6 +65,13 @@ def makedirs(folder):
         xbmc.log('Failed to create directory: ' + folder, xbmc.LOGDEBUG)
 
 
+def slurpLog(stream):
+    for line in iter(stream.readline, b''):
+        # FIXME
+        xbmc.log('browse.py: ' + line, xbmc.LOGERROR)
+    stream.close()
+
+
 @contextlib.contextmanager
 def suspendXbmcLirc():
     xbmc.log('Suspending XBMC LIRC', xbmc.LOGDEBUG)
@@ -199,168 +81,6 @@ def suspendXbmcLirc():
     finally:
         xbmc.log('Resuming XBMC LIRC', xbmc.LOGDEBUG)
         xbmc.executebuiltin('LIRC.Start')
-
-
-@contextlib.contextmanager
-def runPylirc(configuration):
-    if pylirc is None:
-        xbmc.log('Not initializing pylirc')
-        yield
-        return
-    xbmc.log(
-        'Initializing pylirc with configuration: ' + configuration,
-        xbmc.LOGDEBUG)
-    fd = pylirc.init('browser', configuration)
-    if not fd:
-        raise RuntimeError('Failed to initialize pylirc')
-    try:
-        yield fd
-    finally:
-        pylirc.exit()
-
-
-def monitorProcess(proc, exitSocket):
-    proc.wait()
-    exitSocket.shutdown(socket.SHUT_RDWR)
-
-
-def getProcessTree(parent):
-    if psutil is None:
-        xbmc.log('Not searching for process descendents', xbmc.LOGDEBUG)
-        return [parent]
-    try:
-        process = psutil.Process(parent)
-        try:
-            children = process.children
-        except AttributeError:
-            children = process.get_children
-        processes = [process] + children(recursive=True)
-        return [node.pid for node in processes]
-    except psutil.NoSuchProcess:
-        xbmc.log('Failed to find process tree', xbmc.LOGDEBUG)
-        return []
-
-
-def killBrowser(proc, sig):
-    for pid in getProcessTree(proc.pid):
-        try:
-            os.kill(pid, sig)
-        except OSError:
-            pass
-
-
-@contextlib.contextmanager
-def runBrowser(browserCmd):
-    (sink, source) = socket.socketpair()
-    with contextlib.closing(sink), contextlib.closing(source):
-        waiter = None
-        try:
-            if xbmc.getCondVisibility('System.Platform.Windows'):
-                # On Windows, the Popen will block unless close_fds is True and
-                # creationflags is DETACHED_PROCESS.
-                xbmc.log('Using Windows creation flags', xbmc.LOGDEBUG)
-                creationflags = 0x00000008
-            else:
-                creationflags = 0
-            xbmc.log(
-                'Launching browser: ' +
-                ' '.join(pipes.quote(arg) for arg in browserCmd),
-                xbmc.LOGINFO)
-            proc = subprocess.Popen(
-                browserCmd, creationflags=creationflags, close_fds=True)
-            try:
-                # Monitor the browser and kick the socket when it exits.
-                waiterStarting = threading.Thread(
-                    target=monitorProcess, args=(proc, source))
-                waiterStarting.start()
-                waiter = waiterStarting
-
-                yield (proc, sink.fileno())
-
-                # Ask each child process to exit.
-                xbmc.log('Terminating the browser', xbmc.LOGDEBUG)
-                killBrowser(proc, signal.SIGTERM)
-
-                # Give the browser a few seconds to shut down gracefully.
-                def terminateBrowser():
-                    xbmc.log(
-                        'Forcefully killing the browser at the deadline',
-                        xbmc.LOGINFO)
-                    killBrowser(proc, signal.SIGKILL)
-                terminator = threading.Timer(
-                    BROWSER_EXIT_DELAY.total_seconds(), terminateBrowser)
-                terminator.start()
-                try:
-                    proc.wait()
-                    proc = None
-                    xbmc.log('Waited for the browser to quit', xbmc.LOGDEBUG)
-                finally:
-                    terminator.cancel()
-                    terminator.join()
-            finally:
-                if proc is not None:
-                    # As a last resort, forcibly kill the browser.
-                    xbmc.log('Forcefully killing the browser', xbmc.LOGINFO)
-                    killBrowser(proc, signal.SIGKILL)
-                    proc.wait()
-                    xbmc.log('Waited for the browser to die', xbmc.LOGDEBUG)
-        finally:
-            if waiter is not None:
-                xbmc.log(
-                    'Joining with browser monitoring thread', xbmc.LOGDEBUG)
-                waiter.join()
-                xbmc.log(
-                    'Joined with browser monitoring thread', xbmc.LOGDEBUG)
-
-
-def activateWindow(cmd, proc, isAborting, xdotoolPath):
-    (output, error) = proc.communicate()
-    if isAborting.is_set():
-        xbmc.log('Aborting search for browser PID', xbmc.LOGDEBUG)
-        return
-    if proc.returncode != 0:
-        xbmc.log('Failed search for browser PID', xbmc.LOGINFO)
-        raise subprocess.CalledProcessError(proc.returncode, cmd, output)
-    wids = [wid for wid in output.split('\n') if wid]
-    for wid in wids:
-        if isAborting.is_set():
-            xbmc.log('Aborting activation of windows', xbmc.LOGDEBUG)
-            return
-        xbmc.log('Activating window with WID: ' + wid, xbmc.LOGDEBUG)
-        subprocess.call([xdotoolPath, 'WindowActivate', wid])
-    xbmc.log('Finished activating windows', xbmc.LOGDEBUG)
-
-
-@contextlib.contextmanager
-def raiseBrowser(pid, xdotoolPath):
-    if not xdotoolPath:
-        xbmc.log('Not raising the browser')
-        yield
-        return
-    activator = None
-    # With the "sync" flag, the command could block indefinitely.
-    cmd = [xdotoolPath, 'search', '--sync', '--onlyvisible', '--pid', str(pid)]
-    xbmc.log(
-        'Searching for browser PID: ' +
-        ' '.join(pipes.quote(arg) for arg in cmd),
-        xbmc.LOGINFO)
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, universal_newlines=True)
-    try:
-        isAborting = threading.Event()
-        activatorStarting = threading.Thread(
-            target=activateWindow, args=(cmd, proc, isAborting, xdotoolPath))
-        activatorStarting.start()
-        activator = activatorStarting
-
-        yield
-    finally:
-        isAborting.set()
-        if proc.poll() is None:
-            proc.kill()
-        proc.wait()
-        if activator is not None:
-            activator.join()
 
 
 @contextlib.contextmanager
@@ -387,158 +107,6 @@ def lockPidfile(browserLockPath, pid):
                 os.remove(browserLockPath)
             except OSError as e:
                 xbmc.log('Failed to remove pidfile: ' + str(e))
-
-
-def monitorKodiDaemon(abortSocket, stopEvent):
-    monitor = xbmc.Monitor()
-    while not stopEvent.is_set() and not monitor.abortRequested():
-        # The only way to register for an event is to use this blocking
-        # method, even though that prevents this thread from waiting on the
-        # stop event.
-        monitor.waitForAbort(1)
-    try:
-        abortSocket.shutdown(socket.SHUT_RDWR)
-    except socket.error:
-        # The socket may already be closed.
-        pass
-
-
-@contextlib.contextmanager
-def abortContext():
-    stopEvent = threading.Event()
-    (sink, source) = socket.socketpair()
-    with contextlib.closing(sink), contextlib.closing(source):
-        # Monitor Kodi and kick the socket when it exits.
-        waiter = threading.Thread(
-            target=monitorKodiDaemon, args=(source, stopEvent))
-        # The waiter is a daemon so that the main thread does not have to wait
-        # for it to finish.
-        waiter.daemon = True
-        waiter.start()
-        try:
-            yield sink.fileno()
-        finally:
-            # The monitor daemon is not joined because it takes a second to
-            # terminate.
-            stopEvent.set()
-
-
-def runRemoteControlBrowser(
-        browserCmd, browserLockPath, lircConfig, xdotoolPath):
-    with (
-            suspendXbmcLirc()), (
-            runPylirc(lircConfig)) as lircFd, (
-            KodiMixer()) as mixer, (
-            runBrowser(browserCmd)) as (browser, browserExitFd), (
-            lockPidfile(browserLockPath, browser.pid)), (
-            raiseBrowser(browser.pid, xdotoolPath)), (
-            abortContext()) as kodiAbortFd:
-
-        polling = [browserExitFd, kodiAbortFd]
-        if lircFd is not None:
-            polling.append(lircFd)
-        releaseKeyTime = None
-        repeatKeys = None
-        isExiting = False
-        while not isExiting:
-            if releaseKeyTime is None:
-                timeout = None
-            else:
-                timeout = max(
-                    (releaseKeyTime - datetime.datetime.now()).total_seconds(),
-                    0)
-            (rlist, wlist, xlist) = select.select(polling, [], [], timeout)
-            if browserExitFd in rlist:
-                xbmc.log(
-                    'Exiting because the browser stopped prematurely',
-                    xbmc.LOGINFO)
-                break
-            if kodiAbortFd in rlist:
-                xbmc.log('Exiting because Kodi is aborting', xbmc.LOGINFO)
-                break
-            if lircFd is not None and lircFd in rlist:
-                buttons = pylirc.nextcode(True)
-            else:
-                buttons = None
-            codes = ([PylircCode(**button) for button in buttons]
-                     if buttons else [])
-            if (releaseKeyTime is not None and
-                    releaseKeyTime <= datetime.datetime.now()):
-                codes.append(PylircCode(config='RELEASE', repeat=0))
-
-            for code in codes:
-                xbmc.log('Received LIRC code: ' + str(code), xbmc.LOGDEBUG)
-                tokens = shlex.split(code.config)
-                (command, args) = (tokens[0], tokens[1:])
-                isReleasing = False
-                nextReleaseKeyTime = None
-                inputs = None
-
-                if command == 'VOLUME_UP':
-                    mixer.incrementVolume()
-                elif command == 'VOLUME_DOWN':
-                    mixer.decrementVolume()
-                elif command == 'MUTE':
-                    mixer.toggleMute()
-                elif command == 'MULTITAP':
-                    if releaseKeyTime is not None and repeatKeys == args:
-                        repeatIndex += 1
-                    else:
-                        isReleasing = True
-                        repeatKeys = args
-                        repeatIndex = 0
-                    nextReleaseKeyTime = (datetime.datetime.now() +
-                                          RELEASE_KEY_DELAY)
-                    current = args[repeatIndex % len(args)]
-                    inputs = [
-                        'key', '--clearmodifiers', '--', current, 'Shift+Left']
-                elif command == 'KEY':
-                    isReleasing = True
-                    inputs = ['key', '--clearmodifiers', '--'] + args
-                elif command == 'CLICK':
-                    isReleasing = True
-                    inputs = ['click', '--clearmodifiers', '1']
-                elif command == 'MOUSE':
-                    step = min(code.repeat, 10)
-                    (horizontal, vertical) = args
-                    acceleratedHorizontal = str(int(horizontal) * step ** 2)
-                    acceleratedVertical = str(int(vertical) * step ** 2)
-                    inputs = [
-                        'mousemove_relative',
-                        '--',
-                        acceleratedHorizontal,
-                        acceleratedVertical]
-                elif command == 'EXIT':
-                    isExiting = True
-                    break
-                elif command == 'RELEASE':
-                    isReleasing = True
-                else:
-                    raise RuntimeError('Unrecognized LIRC config: ' + command)
-
-                if isReleasing and releaseKeyTime is not None:
-                    if xdotoolPath:
-                        # Deselect the current multi-tap character.
-                        xbmc.log(
-                            'Executing xdotool for multi-tap release',
-                            xbmc.LOGDEBUG)
-                        subprocess.check_call(
-                            [xdotoolPath, 'key', '--clearmodifiers', 'Right'])
-                    else:
-                        xbmc.log(
-                            'Ignoring xdotool for multi-tap release',
-                            xbmc.LOGDEBUG)
-                releaseKeyTime = nextReleaseKeyTime
-
-                if inputs is not None:
-                    if xdotoolPath:
-                        cmd = [xdotoolPath] + inputs
-                        xbmc.log('Executing: ' + ' '.join(cmd), xbmc.LOGDEBUG)
-                        subprocess.check_call(cmd)
-                    else:
-                        xbmc.log(
-                            'Ignoring xdotool inputs: ' + str(inputs),
-                            xbmc.LOGDEBUG)
 
 
 class RemoteControlBrowserPlugin(xbmcaddon.Addon):
@@ -902,6 +470,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         browserPath = self.getSetting('browserPath').decode('utf_8')
         browserArgs = self.getSetting('browserArgs').decode('utf_8')
         xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
+        suspendKodi = self.unmarshalBool(self.getSetting('suspendKodi'))
 
         if not browserPath or not os.path.isfile(browserPath):
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
@@ -925,14 +494,75 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         player = xbmc.Player()
         if player.isPlaying() and not xbmc.getCondVisibility('Player.Paused'):
             player.pause()
-
         try:
-            runRemoteControlBrowser(
-                browserCmd, browserLockPath, lircConfig, xdotoolPath)
+            with suspendXbmcLirc():
+                self.spawnBrowser(
+                    suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath)
         except CompetingLaunchError:
             xbmc.log('A competing browser instance is already running')
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
                 self.escapeNotification(self.getLocalizedString(30038))))
+
+
+    def spawnBrowser(
+            self, suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath):
+        # The browser runs in its own subprocess so that it can continue after
+        # Kodi stops.
+        suspendKodiFlags = []
+        if suspendKodi:
+            suspendKodiFlags.append('--suspend-kodi')
+        browsePath = os.path.join(self.addonFolder, 'browse.py')
+        if xbmc.getCondVisibility('System.Platform.Windows'):
+            # On Windows, the Popen will block unless close_fds is True and
+            # creationflags is DETACHED_PROCESS.
+            xbmc.log('Using Windows creation flags', xbmc.LOGDEBUG)
+            creationflags = 0x00000008
+        else:
+            creationflags = 0
+        xbmc.log(
+            'Launching browser: ' +
+            ' '.join(pipes.quote(arg) for arg in browserCmd),
+            xbmc.LOGINFO)
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                browsePath,
+            ] + suspendKodiFlags + [
+                '--',
+                browserLockPath,
+                lircConfig,
+                xdotoolPath,
+            ] + browserCmd,
+            creationflags=creationflags,
+            stderr=subprocess.PIPE)
+        logger = threading.Thread(target=slurpLog, args=(proc.stderr,))
+
+        # FIXME: Lock the pidfile
+        monitor = xbmc.Monitor()
+        while not proc.poll() and not monitor.abortRequested():
+            # The only way to register for an event is to use this blocking
+            # method, even though that prevents this thread from waiting on the
+            # subprocess.
+            monitor.waitForAbort(1)
+
+        if not proc.poll():
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+            proc.wait()
+        logger.join()
+        if proc.returncode:
+            xbmc.log('Failed to spawn browser: ' + str(proc.returncode))
+        xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
+            self.escapeNotification(self.getLocalizedString(30039))))
+
+    def unmarshalBool(self, val):
+        STRING_ENCODING = {'false': False, 'true': True}
+        unmarshalled = STRING_ENCODING.get(val)
+        if unmarshalled is None:
+            raise ValueError('Invalid Boolean: ' + str(val))
+        return unmarshalled
 
 
 def parsedParams(search):
