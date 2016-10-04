@@ -65,7 +65,7 @@
                     /* A CORS request does not work from a secure page, so a self-closing window is the fallback. */
                     var url = params.origin + '/linkcast.close';
                     var nonce = Math.floor(Math.random() * Math.pow(2, 64)).toString(16);
-                    var location = url + '?nonce=' + nonce + '&callback=void&' + query;
+                    var location = url + '?nonce=' + nonce + '&' + query;
                     window.open(location);
                     break;
                 default:
