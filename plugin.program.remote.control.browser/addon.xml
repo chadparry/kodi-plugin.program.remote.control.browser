@@ -22,7 +22,7 @@
         <disclaimer lang="de_DE">Die Erfahrung wird vermindert werden, wenn nicht diese externen Abhängigkeiten installiert sind: „psutil“, „pyalsaaudio“, „pylirc2“ und „Pillow“. Ein weiteres hilfreiches Werkzeug ist „unclutter“, das automatisch den Mauszeiger versteckt. (Auf einem Debian-basierten System führen Sie „sudo apt-get install python-psutil python-alsaaudio python-pylirc python-pil unclutter“ aus). Schließlich wird ein Theme mit einem großen Mauszeiger die Sichtbarkeit verbessern, (zum Beispiel https://www.gnome-look.org/p/999574/).</disclaimer>
         <disclaimer lang="pt_BR">A experiência será degradada, a menos que essas dependências externas estejam instaladas: “psutil”, “pyalsaaudio”, “pylirc2” e “Pillow”. Outra ferramenta útil é “unclutter”, que oculta automaticamente o ponteiro do mouse. (Em um sistema baseado em Debian, execute “sudo apt-get install python-psutil python-alsaaudio python-pylirc python-pil unclutter”). Finalmente, um tema com um ponteiro do mouse grande irá melhorar a visibilidade do ponteiro, (por exemplo, https://www.gnome-look.org/p/999574/).</disclaimer>
         <platform>linux osx</platform>
-        <language>en en_US de_DE pt_BR</language>
+        <language></language>
         <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
         <forum></forum>
         <website></website>
