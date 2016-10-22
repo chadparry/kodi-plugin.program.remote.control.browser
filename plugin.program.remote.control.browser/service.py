@@ -305,16 +305,6 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             raise ValueError('Invalid Boolean: ' + str(val))
         return unmarshalled
 
-    def isPillowInstalled(self):
-        # The Pillow module needs to be isolated to its own subprocess because
-        # many distributions are prone to deadlock.
-        importPath = os.path.join(self.addonFolder, 'import.py')
-        try:
-            subprocess.check_call([sys.executable, importPath])
-            return True
-        except subprocess.CalledProcessError:
-            return False
-
     def generateSettings(self):
         xbmc.log('Generating default addon settings')
         root = xml.etree.ElementTree.Element('settings')
@@ -366,10 +356,6 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             'type': 'lsep',
             'label': '30024',
             'visible': self.marshalBool(not pylirc)})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'type': 'lsep',
-            'label': '30026',
-            'visible': self.marshalBool(not self.isPillowInstalled())})
 
         tree = xml.etree.ElementTree.ElementTree(root)
         settingsPath = os.path.join(self.addonFolder, 'resources/settings.xml')
