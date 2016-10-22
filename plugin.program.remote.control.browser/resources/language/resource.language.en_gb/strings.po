@@ -79,10 +79,6 @@ msgctxt "#30025"
 msgid "Launch Bookmark"
 msgstr ""
 
-msgctxt "#30026"
-msgid "Warning: Missing Python package “Pillow”"
-msgstr ""
-
 msgctxt "#30027"
 msgid "Edit Keymap"
 msgstr ""
