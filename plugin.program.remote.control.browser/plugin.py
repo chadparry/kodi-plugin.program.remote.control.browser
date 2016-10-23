@@ -529,7 +529,6 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 browsePath,
             ] + suspendKodiFlags + [
                 '--',
-                browserLockPath,
                 lircConfig,
                 xdotoolPath,
             ] + browserCmd,
@@ -537,13 +536,13 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             stderr=subprocess.PIPE)
         logger = threading.Thread(target=slurpLog, args=(proc.stderr,))
 
-        # FIXME: Lock the pidfile
-        monitor = xbmc.Monitor()
-        while not proc.poll() and not monitor.abortRequested():
-            # The only way to register for an event is to use this blocking
-            # method, even though that prevents this thread from waiting on the
-            # subprocess.
-            monitor.waitForAbort(1)
+        with lockPidfile(browserLockPath, proc.pid):
+            monitor = xbmc.Monitor()
+            while not proc.poll() and not monitor.abortRequested():
+                # The only way to register for an event is to use this blocking
+                # method, even though that prevents this thread from waiting on the
+                # subprocess.
+                monitor.waitForAbort(1)
 
         if not proc.poll():
             try:

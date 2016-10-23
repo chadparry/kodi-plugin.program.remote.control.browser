@@ -438,7 +438,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
                     logger.debug('Ignoring xdotool inputs: ' + str(inputs))
 
 
-def wrapBrowser(browserCmd, suspendKodi, browserLockPath, lircConfig, xdotoolPath):
+def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath):
     with (
             abortContext()) as abortFd, (
             suspendParentProcess(suspendKodi)), (
@@ -452,13 +452,12 @@ def wrapBrowser(browserCmd, suspendKodi, browserLockPath, lircConfig, xdotoolPat
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--suspend-kodi', action='store_true')
-    parser.add_argument('pidfile')
     parser.add_argument('lirc')
     parser.add_argument('xdotool')
     parser.add_argument('cmd', nargs='+')
     args = parser.parse_args()
 
-    wrapBrowser(args.cmd, args.suspend_kodi, args.pidfile, args.lirc, args.xdotool)
+    wrapBrowser(args.cmd, args.suspend_kodi, args.lirc, args.xdotool)
 
 
 if __name__ == "__main__":
