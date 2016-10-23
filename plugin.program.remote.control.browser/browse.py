@@ -32,6 +32,7 @@ except ImportError:
 
 
 logger = logging.getLogger('remotecontrolbrowser')
+logger.addHandler(logging.StreamHandler())
 
 
 VOLUME_MIN = 0L

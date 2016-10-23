@@ -67,8 +67,7 @@ def makedirs(folder):
 
 def slurpLog(stream):
     for line in iter(stream.readline, b''):
-        # FIXME
-        xbmc.log('browse.py: ' + line, xbmc.LOGERROR)
+        xbmc.log('Browsing message: ' + line, xbmc.LOGDEBUG)
     stream.close()
 
 
@@ -535,6 +534,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             creationflags=creationflags,
             stderr=subprocess.PIPE)
         logger = threading.Thread(target=slurpLog, args=(proc.stderr,))
+        logger.start()
 
         with lockPidfile(browserLockPath, proc.pid):
             monitor = xbmc.Monitor()
