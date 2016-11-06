@@ -1,12 +1,14 @@
 import argparse
 import bs4
 import contextlib
+import cPickle
 import datetime
 import math
 import os
 import pipes
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import threading
@@ -19,6 +21,8 @@ import xbmcplugin
 import xbmcgui
 import xbmcaddon
 import xml.etree.ElementTree
+
+import protocol
 
 
 DEFAULT_LIRC_CONFIG = ('special://home/addons' +
@@ -106,6 +110,66 @@ def lockPidfile(browserLockPath, pid):
                 os.remove(browserLockPath)
             except OSError as e:
                 xbmc.log('Failed to remove pidfile: ' + str(e))
+
+
+class VolumeRelay:
+    """Relays commands from a child process to the JSON-RPC API"""
+
+    def __init__(self):
+        self.lastRpcId = 0
+        self.relay = None
+        (self.parent, self.child) = socket.socketpair()
+
+    def __enter__(self):
+        try:
+            result = self.executeJSONRPC(
+                'Application.GetProperties',
+                {'properties': ['muted', 'volume']})
+            initVolume = protocol.Volume(bool(result['muted']), int(result['volume']))
+        except (JsonRpcError, KeyError, ValueError) as e:
+            logger.debug('Could not retrieve current volume: ' + str(e))
+            initVolume = protocol.Volume(False, VOLUME_MAX)
+
+        # Execute volume commands from the child process.
+        relayStarting = threading.Thread(
+            target=self.relayVolume)
+        relayStarting.start()
+        self.relay = relayStarting
+
+        return (initVolume, source)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # FIXME: Is this safe? The other process could be halfway done writing to it!
+        self.child.shutdown(socket.SHUT_RDWR)
+        if self.relay is not None:
+            logger.debug(
+                'Joining with volume relay thread')
+            self.relay.join()
+            logger.debug(
+                'Joined with volume relay thread')
+
+    def relayVolume(self):
+        try:
+            while True:
+                strategy = cPickle.load(self.parent)
+                strategy.execute()
+        except EOFError:
+            pass
+
+    def getNextRpcId(self):
+        self.lastRpcId = self.lastRpcId + 1
+        return self.lastRpcId
+
+    def executeJSONRPC(self, method, params):
+        response = xbmc.executeJSONRPC(json.dumps({
+            'jsonrpc': '2.0',
+            'method': method,
+            'params': params,
+            'id': self.getNextRpcId()}))
+        try:
+            return json.loads(response)['result']
+        except (KeyError, ValueError):
+            raise JsonRpcError('Invalid JSON RPC response: ' + repr(response))
 
 
 class RemoteControlBrowserPlugin(xbmcaddon.Addon):
@@ -494,7 +558,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         if player.isPlaying() and not xbmc.getCondVisibility('Player.Paused'):
             player.pause()
         try:
-            with suspendXbmcLirc():
+            with (
+                    suspendXbmcLirc()), (
+                    VolumeRelay()) as (initVolume, volumeSocket):
                 self.spawnBrowser(
                     suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath)
         except CompetingLaunchError:

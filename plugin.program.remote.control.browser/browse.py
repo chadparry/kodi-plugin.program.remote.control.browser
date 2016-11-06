@@ -1,5 +1,6 @@
 import argparse
 import collections
+import cPickle
 import contextlib
 import datetime
 import errno
@@ -13,6 +14,8 @@ import signal
 import socket
 import subprocess
 import threading
+
+import protocol
 
 
 # If any of these packages are missing, the script will attempt to proceed
@@ -31,6 +34,7 @@ except ImportError:
     pylirc = None
 
 
+# FIXME: Log on a different thread so the buffer doesn't fill
 logger = logging.getLogger('remotecontrolbrowser')
 logger.addHandler(logging.StreamHandler())
 
@@ -57,7 +61,6 @@ class KodiMixer:
             logger.debug('Not initializing an alsaaudio mixer')
         else:
             self.delegate = alsaaudio.Mixer()
-        self.lastRpcId = 0
         try:
             result = self.executeJSONRPC(
                 'Application.GetProperties',
@@ -81,24 +84,6 @@ class KodiMixer:
         if alsaaudio is not None:
             for (channel, volume) in enumerate(self.original):
                 self.delegate.setvolume(volume, channel)
-
-    def getNextRpcId(self):
-        self.lastRpcId = self.lastRpcId + 1
-        return self.lastRpcId
-
-    def executeJSONRPC(self, method, params):
-        # FIXME
-        raise JsonRpcError('JSON RPC not supported!')
-
-        response = xbmc.executeJSONRPC(json.dumps({
-            'jsonrpc': '2.0',
-            'method': method,
-            'params': params,
-            'id': self.getNextRpcId()}))
-        try:
-            return json.loads(response)['result']
-        except (KeyError, ValueError):
-            raise JsonRpcError('Invalid JSON RPC response: ' + repr(response))
 
     def realizeVolume(self):
         # Muting the Master volume and then unmuting it is not a symmetric
@@ -142,6 +127,14 @@ class KodiMixer:
             self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
         if alsaaudio is not None and not self.muted:
             self.delegate.setvolume(self.volume)
+
+    def executeJSONRPC(self, method, params):
+        command = json.dumps({
+            'jsonrpc': '2.0',
+            'method': method,
+            'params': params,
+            'id': self.getNextRpcId()})
+        execute
 
 
 def terminateHandler(abortSocket):
