@@ -1,3 +1,6 @@
+v1.0.3 (2016-11-06)
+- Require the PIL module
+
 v1.0.2 (2016-10-03)
 - Clear languages from metadata
 
