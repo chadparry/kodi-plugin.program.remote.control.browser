@@ -1,3 +1,6 @@
+v1.0.4 (2016-11-07)
+- Fix a lint warning
+
 v1.0.3 (2016-11-06)
 - Require the PIL module
 

@@ -662,7 +662,6 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             except OSError:
                 xbmc.log(
                     'Failed to remove thumbnail: ' + thumbId, xbmc.LOGINFO)
-                pass
 
     def scrapeWebpage(
             self, url, thumbId, isAborting, isTitleReady, fetchedTitleSlot):
