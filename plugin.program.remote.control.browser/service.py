@@ -276,12 +276,12 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             self.addonFolder, 'resources/data/dependencies.xml')
         tree = xml.etree.ElementTree.parse(dependenciesPath)
 
+        browserPath = ''
+        browserArgs = ''
+        xdotoolPath = ''
         for platform in tree.iter('platform'):
             platformId = platform.get('id')
             if xbmc.getCondVisibility(platformId):
-                browserPath = ''
-                browserArgs = ''
-                xdotoolPath = ''
                 for xdotool in platform.iter('xdotool'):
                     if os.path.exists(xdotool.get('path')):
                         xdotoolPath = xdotool.get('path')
@@ -291,8 +291,8 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
                         browserPath = browser.get('path')
                         browserArgs = browser.get('args')
                         break
-                return DetectedDefaults(browserPath, browserArgs, xdotoolPath)
-        raise RuntimeError('Platform not supported')
+                break
+        return DetectedDefaults(browserPath, browserArgs, xdotoolPath)
 
     def marshalBool(self, val):
         BOOL_ENCODING = {False: 'false', True: 'true'}
@@ -305,56 +305,22 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             raise ValueError('Invalid Boolean: ' + str(val))
         return unmarshalled
 
-    def generateSettings(self):
+    def storeDefaults(self):
         xbmc.log('Generating default addon settings')
-        root = xml.etree.ElementTree.Element('settings')
-        dependencies = xml.etree.ElementTree.SubElement(
-            root, 'category', {'label': '30018'})
-        defaults = self.getDefaults()
+        self.setSetting('psutilInstalled', self.marshalBool(psutil))
+        self.setSetting('alsaaudioInstalled', self.marshalBool(alsaaudio))
+        self.setSetting('pylircInstalled', self.marshalBool(pylirc))
 
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'id': 'browserPath',
-            'type': 'executable',
-            'label': '30019',
-            'default': defaults.browserPath})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'id': 'browserArgs',
-            'type': 'text',
-            'label': '30020',
-            'default': defaults.browserArgs})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'id': 'xdotoolPath',
-            'type': 'executable',
-            'label': '30021',
-            'default': defaults.xdotoolPath})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'id': 'linkcastEnabled',
-            'type': 'bool',
-            'label': '30030',
-            'default': self.marshalBool(False)})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'id': 'linkcastPort',
-            'type': 'number',
-            'label': '30031',
-            'subsetting': self.marshalBool(True),
-            'enable': 'eq(-1,true)',
-            'default': str(DEFAULT_LINKCAST_PORT)})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'type': 'lsep',
-            'label': '30022',
-            'visible': self.marshalBool(not psutil)})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'type': 'lsep',
-            'label': '30023',
-            'visible': self.marshalBool(not alsaaudio)})
-        xml.etree.ElementTree.SubElement(dependencies, 'setting', {
-            'type': 'lsep',
-            'label': '30024',
-            'visible': self.marshalBool(not pylirc)})
-
-        tree = xml.etree.ElementTree.ElementTree(root)
-        settingsPath = os.path.join(self.addonFolder, 'resources/settings.xml')
-        tree.write(settingsPath, encoding='UTF-8', xml_declaration=True)
+        browserPath = self.getSetting('browserPath').decode('utf_8')
+        browserArgs = self.getSetting('browserArgs').decode('utf_8')
+        xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
+        if not browserPath or not xdotoolPath:
+            defaults = self.getDefaults()
+            if not browserPath:
+                self.setSetting('browserPath', defaults.browserPath)
+                self.setSetting('browserArgs', defaults.browserArgs)
+            if not xdotoolPath:
+                self.setSetting('xdotoolPath', defaults.xdotoolPath)
 
     def reloadLinkcastServer(self):
         linkcastEnabled = self.unmarshalBool(
@@ -405,7 +371,7 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
 def main():
     service = RemoteControlBrowserService()
     service.clearBrowserLock()
-    service.generateSettings()
+    service.storeDefaults()
     monitor = LinkcastMonitor(service)
     service.reloadLinkcastServer()
 
