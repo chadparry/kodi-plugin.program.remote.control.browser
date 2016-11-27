@@ -503,6 +503,13 @@ def runRemoteControlBrowser(
                 elif command == 'CLICK':
                     isReleasing = True
                     inputs = ['click', '--clearmodifiers', '1']
+                    # NOTE: XDOTOOL HACK
+                    # Some platforms include a buggy version of xdotool,
+                    # (https://github.com/jordansissel/xdotool/pull/102).
+                    # If you have version 3.20150503.1, then the mouse button
+                    # will not be released correctly. The workaround is to
+                    # uncomment the following line.
+                    #inputs = ['click', '1']
                 elif command == 'MOUSE':
                     step = min(code.repeat, 10)
                     (horizontal, vertical) = args

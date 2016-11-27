@@ -1,3 +1,6 @@
+v1.0.5 (2016-11-27)
+- Dynamically adjust settings values but not the settings schema
+
 v1.0.4 (2016-11-07)
 - Fix a lint warning
 
