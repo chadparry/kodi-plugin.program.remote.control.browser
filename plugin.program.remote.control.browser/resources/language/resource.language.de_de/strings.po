@@ -124,3 +124,7 @@ msgstr "Kodi Linkcast nicht das Schema unterstützen: %(url)s"
 msgctxt "#30038"
 msgid "Browser already running!"
 msgstr "Browser ausgeführt bereits!"
+
+msgctxt "#30039"
+msgid "Warning: Insufficient memory"
+msgstr "Warnung: Unzureichender Speicher"

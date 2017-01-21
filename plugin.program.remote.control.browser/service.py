@@ -35,6 +35,7 @@ except ImportError:
 
 
 DEFAULT_LINKCAST_PORT = 49029
+MINIMUM_RAM_REQUIREMENT = 1.5 * 2**30  # 1.5 GB
 
 
 DetectedDefaults = collections.namedtuple(
@@ -294,6 +295,10 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
                 break
         return DetectedDefaults(browserPath, browserArgs, xdotoolPath)
 
+    def isMemorySufficient(self):
+        return (psutil is None or
+            psutil.virtual_memory().total >= MINIMUM_RAM_REQUIREMENT)
+
     def marshalBool(self, val):
         BOOL_ENCODING = {False: 'false', True: 'true'}
         return BOOL_ENCODING[bool(val)]
@@ -307,6 +312,7 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
 
     def storeDefaults(self):
         xbmc.log('Generating default addon settings')
+        self.setSetting('memorySufficient', self.marshalBool(self.isMemorySufficient()))
         self.setSetting('psutilInstalled', self.marshalBool(psutil))
         self.setSetting('alsaaudioInstalled', self.marshalBool(alsaaudio))
         self.setSetting('pylircInstalled', self.marshalBool(pylirc))

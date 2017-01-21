@@ -124,3 +124,7 @@ msgstr "O Kodi Linkcast não suporta o esquema: %(url)s"
 msgctxt "#30038"
 msgid "Browser already running!"
 msgstr "Navegador já em execução!"
+
+msgctxt "#30039"
+msgid "Warning: Insufficient memory"
+msgstr "Atenção: Memória insuficiente"

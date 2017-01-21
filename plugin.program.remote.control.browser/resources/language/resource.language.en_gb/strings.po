@@ -126,3 +126,7 @@ msgstr ""
 msgctxt "#30038"
 msgid "Browser already running!"
 msgstr ""
+
+msgctxt "#30039"
+msgid "Warning: Insufficient memory"
+msgstr ""
