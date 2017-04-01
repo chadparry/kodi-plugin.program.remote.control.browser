@@ -288,7 +288,6 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             except OSError:
                 xbmc.log(
                     'Failed to remove thumbnail: ' + thumbId, xbmc.LOGINFO)
-                pass
 
     def scrapeWebpage(
             self, url, thumbId, isAborting, isTitleReady, fetchedTitleSlot):
@@ -620,7 +619,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         if proc.returncode:
             xbmc.log('Failed to spawn browser: ' + str(proc.returncode))
         xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
-            self.escapeNotification(self.getLocalizedString(30039))))
+            self.escapeNotification(self.getLocalizedString(30040))))
 
     def unmarshalBool(self, val):
         STRING_ENCODING = {'false': False, 'true': True}

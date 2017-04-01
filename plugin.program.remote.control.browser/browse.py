@@ -59,8 +59,13 @@ class KodiMixer:
     def __init__(self):
         if alsaaudio is None:
             logger.debug('Not initializing an alsaaudio mixer')
+            self.delegate = None
         else:
-            self.delegate = alsaaudio.Mixer()
+            try:
+                self.delegate = alsaaudio.Mixer()
+            except alsaaudio.ALSAAudioError as e:
+                xbmc.log('Failed to initialize alsaaudio: ' + str(e))
+                self.delegate = None
         try:
             result = self.executeJSONRPC(
                 'Application.GetProperties',
@@ -73,7 +78,7 @@ class KodiMixer:
             self.volume = VOLUME_MAX
 
     def __enter__(self):
-        if alsaaudio is not None:
+        if self.delegate is not None:
             self.original = self.delegate.getvolume()
         # Match the current volume to Kodi's last volume.
         self.realizeVolume()
@@ -81,7 +86,7 @@ class KodiMixer:
 
     def __exit__(self, exc_type, exc_value, traceback):
         # Restore the master volume to its original level.
-        if alsaaudio is not None:
+        if self.delegate is not None:
             for (channel, volume) in enumerate(self.original):
                 self.delegate.setvolume(volume, channel)
 
@@ -89,7 +94,7 @@ class KodiMixer:
         # Muting the Master volume and then unmuting it is not a symmetric
         # operation, because other controls end up muted. So a mute needs to be
         # simulated by setting the volume level to zero.
-        if alsaaudio is not None:
+        if self.delegate is not None:
             if self.muted:
                 self.delegate.setvolume(0)
             else:
@@ -114,7 +119,7 @@ class KodiMixer:
         except (JsonRpcError, ValueError) as e:
             logger.debug('Could not increase volume: ' + str(e))
             self.volume = min(self.volume + DEFAULT_VOLUME_STEP, VOLUME_MAX)
-        if alsaaudio is not None:
+        if self.delegate is not None:
             self.delegate.setvolume(self.volume)
 
     def decrementVolume(self):
@@ -125,7 +130,7 @@ class KodiMixer:
         except (JsonRpcError, ValueError) as e:
             logger.debug('Could not decrease volume: ' + str(e))
             self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
-        if alsaaudio is not None and not self.muted:
+        if self.delegate is not None and not self.muted:
             self.delegate.setvolume(self.volume)
 
     def executeJSONRPC(self, method, params):
@@ -393,6 +398,13 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
             elif command == 'CLICK':
                 isReleasing = True
                 inputs = ['click', '--clearmodifiers', '1']
+                # NOTE: XDOTOOL HACK
+                # Some platforms include a buggy version of xdotool,
+                # (https://github.com/jordansissel/xdotool/pull/102).
+                # If you have version 3.20150503.1, then the mouse button
+                # will not be released correctly. The workaround is to
+                # uncomment the following line.
+                #inputs = ['click', '1']
             elif command == 'MOUSE':
                 step = min(code.repeat, 10)
                 (horizontal, vertical) = args
