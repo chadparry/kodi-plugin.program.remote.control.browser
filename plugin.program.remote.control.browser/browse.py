@@ -2,7 +2,6 @@
 
 import argparse
 import collections
-import cPickle
 import contextlib
 import datetime
 import errno
@@ -49,7 +48,7 @@ BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
 PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
 
 
-class AlsaMixer:
+class AlsaMixer(object):
     """Mixer that wraps ALSA"""
 
     def __init__(self, alsaControl):
@@ -68,8 +67,8 @@ class AlsaMixer:
         delegate = self.getDelegate()
         if delegate is not None:
             # Muting the Master volume and then unmuting it is not a symmetric
-            # operation, because other controls end up muted. So a mute needs to be
-            # simulated by setting the volume level to zero.
+            # operation, because other controls end up muted. So a mute needs
+            # to be simulated by setting the volume level to zero.
             if self.mute:
                 volume = 0
             else:
@@ -205,7 +204,8 @@ def execBrowser(browserCmd):
 
                 # Give the browser a few seconds to shut down gracefully.
                 def terminateBrowser():
-                    logger.info('Forcefully killing the browser at the deadline')
+                    logger.info(
+                        'Forcefully killing the browser at the deadline')
                     killBrowser(proc, signal.SIGKILL)
                 terminator = threading.Timer(
                     BROWSER_EXIT_DELAY.total_seconds(), terminateBrowser)
@@ -234,7 +234,7 @@ def execBrowser(browserCmd):
 
 
 def activateWindow(cmd, proc, isAborting, xdotoolPath):
-    (output, error) = proc.communicate()
+    (output, _) = proc.communicate()
     if isAborting.is_set():
         logger.debug('Aborting search for browser PID')
         return
@@ -297,7 +297,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
                 (releaseKeyTime - datetime.datetime.now()).total_seconds(),
                 0)
         try:
-            (rlist, wlist, xlist) = select.select(polling, [], [], timeout)
+            (rlist, _, _) = select.select(polling, [], [], timeout)
             if browserExitFd in rlist:
                 logger.info('Exiting because the browser stopped prematurely')
                 break
@@ -311,9 +311,10 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
         except select.error as e:
             # Check whether this interrupt was from a signal to abort.
             if e[0] == errno.EINTR:
-                (rlist, wlist, xlist) = select.select([abortFd], [], [], 0)
+                (rlist, _, _) = select.select([abortFd], [], [], 0)
                 if abortFd in rlist:
-                    logger.info('Exiting because a SIGTERM interrupted a syscall')
+                    logger.info(
+                        'Exiting because a SIGTERM interrupted a syscall')
                     break
             raise
         codes = ([PylircCode(**button) for button in buttons]

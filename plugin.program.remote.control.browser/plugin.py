@@ -1,7 +1,5 @@
 import argparse
-import bs4
 import contextlib
-import cPickle
 import datetime
 import errno
 import json
@@ -17,11 +15,13 @@ import urllib
 import urllib2
 import urlparse
 import uuid
+import xml.etree.ElementTree
+
+import bs4
 import xbmc
 import xbmcplugin
 import xbmcgui
 import xbmcaddon
-import xml.etree.ElementTree
 
 
 # If any of these packages are missing, the script will attempt to proceed
@@ -46,7 +46,7 @@ class CompetingLaunchError(RuntimeError):
     pass
 
 
-class InterminableProgressBar:
+class InterminableProgressBar(object):
     """Acts as a spinner for work with an unknown duration"""
 
     DEFAULT_TICK_INTERVAL = datetime.timedelta(milliseconds=250)
@@ -54,6 +54,7 @@ class InterminableProgressBar:
     def __init__(self, title):
         self.title = title
         self.dialog = xbmcgui.DialogProgress()
+        self.ticks = None
 
     def __enter__(self):
         self.ticks = 0
@@ -79,7 +80,7 @@ def makedirs(folder):
     except OSError as e:
         # The directory may already exist.
         if e.errno != errno.EEXIST or not os.path.isdir(folder):
-		raise
+            raise
 
 
 def slurpLog(stream):
@@ -125,12 +126,15 @@ def lockPidfile(browserLockPath, pid):
                 xbmc.log('Failed to remove pidfile: ' + str(e))
 
 
-class VolumeGuard:
+class VolumeGuard(object):
     """Hands off volume control between Kodi and ALSA"""
 
     def __init__(self, alsaControl):
         self.alsaControl = alsaControl
         self.lastRpcId = 0
+        self.kodiMute = None
+        self.kodiVolume = None
+        self.alsaChannels = None
 
     def __enter__(self):
         mixer = self.getMixer()
@@ -140,25 +144,26 @@ class VolumeGuard:
                     'Application.GetProperties',
                     {'properties': ['muted', 'volume']})
                 mute = bool(result['muted'])
-                volume = int(result['volume'])
+                volume = long(result['volume'])
             except (JsonRpcError, KeyError, ValueError) as e:
                 xbmc.log('Could not retrieve original Kodi volume: ' + str(e))
                 mute = False
                 volume = DEFAULT_VOLUME
-            self.kodi_mute = mute
-            self.kodi_volume = volume
+            self.kodiMute = mute
+            self.kodiVolume = volume
 
             try:
-                self.alsa_channels = mixer.getvolume()
+                self.alsaChannels = mixer.getvolume()
             except alsaaudio.ALSAAudioError as e:
                 xbmc.log('Could not detect original ALSA volume: ' + str(e))
-                self.alsa_channels = None
+                self.alsaChannels = None
 
             try:
                 # Match the ALSA volume to Kodi's last volume.
-                # Muting the Master volume and then unmuting it is not a symmetric
-                # operation, because other controls end up muted. So a mute needs to be
-                # simulated by setting the volume level to zero.
+                # Muting the Master volume and then unmuting it is not a
+                # symmetric operation, because other controls end up muted.
+                # So a mute needs to be simulated by setting the volume level
+                # to zero.
                 if mute:
                     mixer.setvolume(0)
                 else:
@@ -177,18 +182,18 @@ class VolumeGuard:
                 volume = next(iter(channels))
                 xbmc.log('Detected ALSA volume: ' + str(volume), xbmc.LOGDEBUG)
                 if not volume:
-                    if self.kodi_volume:
+                    if self.kodiVolume:
                         # The volume was probably zero because it was muted.
                         mute = True
                     else:
                         # The volume and mute haven't changed.
-                        mute = self.kodi_mute
-                    volume = self.kodi_volume
+                        mute = self.kodiMute
+                    volume = self.kodiVolume
                 else:
                     mute = False
                 try:
                     xbmc.log('Updating Kodi volume: ' + str(volume) +
-                            ', mute=' + str(mute), xbmc.LOGDEBUG)
+                             ', mute=' + str(mute), xbmc.LOGDEBUG)
                     self.executeJSONRPC(
                         'Application.SetMute', {'mute': mute})
                     self.executeJSONRPC(
@@ -200,13 +205,15 @@ class VolumeGuard:
 
             # Restore the master volume to its original level.
             try:
-                for (channel, volume) in enumerate(self.alsa_channels):
+                for (channel, volume) in enumerate(self.alsaChannels):
                     mixer.setvolume(volume, channel)
             except alsaaudio.ALSAAudioError as e:
                 xbmc.log('Could not restore ALSA volume: ' + str(e))
 
     def getMixer(self):
-        """Returns a ALSA mixer, which is not kept, because it tends to cache stale values"""
+        """Returns a ALSA mixer, which is not kept, because it tends to cache
+        stale values
+        """
         if alsaaudio is None:
             xbmc.log('Not initializing an alsaaudio mixer', xbmc.LOGDEBUG)
             mixer = None
@@ -307,17 +314,17 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 })
         listItem.addContextMenuItems([
             (self.getLocalizedString(30025),
-                'RunPlugin({})'.format(self.buildPluginUrl(
-                    {'mode': 'launchBookmark', 'id': bookmarkId}))),
+             'RunPlugin({})'.format(self.buildPluginUrl(
+                 {'mode': 'launchBookmark', 'id': bookmarkId}))),
             (self.getLocalizedString(30006),
-                'RunPlugin({})'.format(self.buildPluginUrl(
-                    {'mode': 'editBookmark', 'id': bookmarkId}))),
+             'RunPlugin({})'.format(self.buildPluginUrl(
+                 {'mode': 'editBookmark', 'id': bookmarkId}))),
             (self.getLocalizedString(30027),
-                'RunPlugin({})'.format(self.buildPluginUrl(
-                    {'mode': 'editKeymap', 'id': bookmarkId}))),
+             'RunPlugin({})'.format(self.buildPluginUrl(
+                 {'mode': 'editKeymap', 'id': bookmarkId}))),
             (self.getLocalizedString(30002),
-                'RunPlugin({})'.format(self.buildPluginUrl(
-                    {'mode': 'removeBookmark', 'id': bookmarkId}))),
+             'RunPlugin({})'.format(self.buildPluginUrl(
+                 {'mode': 'removeBookmark', 'id': bookmarkId}))),
         ])
         return (url, listItem)
 
@@ -327,7 +334,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             bookmark.get('id'),
             bookmark.get('title'),
             bookmark.get('thumb'))
-            for bookmark in tree.iter('bookmark')]
+                 for bookmark in tree.iter('bookmark')]
 
         url = self.buildPluginUrl({'mode': 'addBookmark'})
         listItem = xbmcgui.ListItem(
@@ -463,7 +470,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 if not isTitleReady.is_set():
                     xbmc.log('Waiting for scrape of title', xbmc.LOGDEBUG)
                     with InterminableProgressBar(
-                            self.getLocalizedString(30029)) as progress:
+                        self.getLocalizedString(30029)) as progress:
                         while not isTitleReady.wait(
                                 progress.DEFAULT_TICK_INTERVAL
                                 .total_seconds()):
@@ -491,7 +498,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             if scraper.isAlive():
                 xbmc.log('Waiting for scrape of thumbnail', xbmc.LOGDEBUG)
                 with InterminableProgressBar(
-                        self.getLocalizedString(30029)) as progress:
+                    self.getLocalizedString(30029)) as progress:
                     while True:
                         scraper.join(
                             progress.DEFAULT_TICK_INTERVAL.total_seconds())
@@ -624,7 +631,12 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     suspendXbmcLirc()), (
                     VolumeGuard(alsaControl)):
                 self.spawnBrowser(
-                    suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath, alsaControl)
+                    suspendKodi,
+                    browserCmd,
+                    browserLockPath,
+                    lircConfig,
+                    xdotoolPath,
+                    alsaControl)
         except CompetingLaunchError:
             xbmc.log('A competing browser instance is already running')
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
@@ -632,7 +644,13 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
 
     def spawnBrowser(
-            self, suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath, alsaControl):
+            self,
+            suspendKodi,
+            browserCmd,
+            browserLockPath,
+            lircConfig,
+            xdotoolPath,
+            alsaControl):
         # The browser runs in its own subprocess so that it can continue after
         # Kodi stops.
         suspendKodiFlags = []
@@ -669,9 +687,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             with lockPidfile(browserLockPath, proc.pid):
                 monitor = xbmc.Monitor()
                 while proc.poll() is None and not monitor.abortRequested():
-                    # The only way to register for an event is to use this blocking
-                    # method, even though that prevents this thread from waiting on the
-                    # subprocess.
+                    # The only way to register for an event is to use this
+                    # blocking method, even though that prevents this thread
+                    # from waiting on the subprocess.
                     monitor.waitForAbort(1)
 
         finally:
@@ -684,7 +702,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             slurper.join()
 
         if proc.returncode:
-            xbmc.log('Failed to spawn browser: errno=' + str(proc.returncode), xbmc.LOGINFO)
+            xbmc.log(
+                'Failed to spawn browser: errno=' + str(proc.returncode),
+                xbmc.LOGINFO)
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
                 self.escapeNotification(self.getLocalizedString(30040))))
 

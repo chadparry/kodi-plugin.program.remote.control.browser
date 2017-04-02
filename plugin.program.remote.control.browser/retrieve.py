@@ -3,11 +3,12 @@
 import argparse
 import io
 import os
-import PIL.Image
-import PIL.PngImagePlugin
 import shutil
 import tempfile
 import urllib2
+
+import PIL.Image
+import PIL.PngImagePlugin
 
 
 def main():
