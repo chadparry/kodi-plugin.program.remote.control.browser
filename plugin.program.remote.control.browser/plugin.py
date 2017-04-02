@@ -128,7 +128,8 @@ def lockPidfile(browserLockPath, pid):
 class VolumeGuard:
     """Hands off volume control between Kodi and ALSA"""
 
-    def __init__(self):
+    def __init__(self, alsaControl):
+        self.alsaControl = alsaControl
         self.lastRpcId = 0
 
     def __enter__(self):
@@ -211,7 +212,7 @@ class VolumeGuard:
             mixer = None
         else:
             try:
-                mixer = alsaaudio.Mixer()
+                mixer = alsaaudio.Mixer(self.alsaControl)
             except alsaaudio.ALSAAudioError as e:
                 xbmc.log('Failed to initialize alsaaudio: ' + str(e))
                 mixer = None
@@ -593,6 +594,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         browserPath = self.getSetting('browserPath').decode('utf_8')
         browserArgs = self.getSetting('browserArgs').decode('utf_8')
         xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
+        alsaControl = self.getSetting('alsaControl').decode('utf_8')
         suspendKodi = self.unmarshalBool(self.getSetting('suspendKodi'))
 
         if not browserPath or not os.path.isfile(browserPath):
@@ -620,9 +622,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         try:
             with (
                     suspendXbmcLirc()), (
-                    VolumeGuard()):
+                    VolumeGuard(alsaControl)):
                 self.spawnBrowser(
-                    suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath)
+                    suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath, alsaControl)
         except CompetingLaunchError:
             xbmc.log('A competing browser instance is already running')
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
@@ -630,7 +632,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
 
     def spawnBrowser(
-            self, suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath):
+            self, suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath, alsaControl):
         # The browser runs in its own subprocess so that it can continue after
         # Kodi stops.
         suspendKodiFlags = []
@@ -653,9 +655,10 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 sys.executable,
                 browsePath,
             ] + suspendKodiFlags + [
+                '--lirc-config', lircConfig,
+                '--xdotool-path', xdotoolPath,
+                '--alsa-control', alsaControl,
                 '--',
-                lircConfig,
-                xdotoolPath,
             ] + browserCmd,
             creationflags=creationflags,
             stderr=subprocess.PIPE)

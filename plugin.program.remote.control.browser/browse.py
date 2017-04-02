@@ -52,7 +52,8 @@ PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
 class AlsaMixer:
     """Mixer that wraps ALSA"""
 
-    def __init__(self):
+    def __init__(self, alsaControl):
+        self.alsaControl = alsaControl
         delegate = self.getDelegate()
         if delegate is None:
             volume = DEFAULT_VOLUME
@@ -95,7 +96,7 @@ class AlsaMixer:
             delegate = None
         else:
             try:
-                delegate = alsaaudio.Mixer()
+                delegate = alsaaudio.Mixer(self.alsaControl)
             except alsaaudio.ALSAAudioError as e:
                 logger.info('Failed to initialize alsaaudio: ' + str(e))
                 delegate = None
@@ -281,8 +282,7 @@ def raiseBrowser(pid, xdotoolPath):
             activator.join()
 
 
-def driveBrowser(xdotoolPath, lircFd, browserExitFd, abortFd):
-    mixer = AlsaMixer()
+def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
     polling = [browserExitFd, abortFd]
     if lircFd is not None:
         polling.append(lircFd)
@@ -400,25 +400,32 @@ def driveBrowser(xdotoolPath, lircFd, browserExitFd, abortFd):
                     logger.debug('Ignoring xdotool inputs: ' + str(inputs))
 
 
-def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath):
+def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath, alsaControl):
+    mixer = AlsaMixer(alsaControl)
     with (
             abortContext()) as abortFd, (
             suspendParentProcess(suspendKodi)), (
             runPylirc(lircConfig)) as lircFd, (
             execBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid, xdotoolPath)):
-        driveBrowser(xdotoolPath, lircFd, browserExitFd, abortFd)
+        driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--suspend-kodi', action='store_true')
-    parser.add_argument('lirc')
-    parser.add_argument('xdotool')
+    parser.add_argument('--lirc-config')
+    parser.add_argument('--xdotool-path')
+    parser.add_argument('--alsa-control')
     parser.add_argument('cmd', nargs='+')
     args = parser.parse_args()
 
-    wrapBrowser(args.cmd, args.suspend_kodi, args.lirc, args.xdotool)
+    wrapBrowser(
+        args.cmd,
+        args.suspend_kodi,
+        args.lirc_config,
+        args.xdotool_path,
+        args.alsa_control)
 
 
 if __name__ == "__main__":
