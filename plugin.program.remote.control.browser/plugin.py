@@ -3,12 +3,13 @@ import bs4
 import contextlib
 import cPickle
 import datetime
+import errno
+import json
 import math
 import os
 import pipes
 import re
 import shlex
-import socket
 import subprocess
 import sys
 import threading
@@ -22,12 +23,23 @@ import xbmcgui
 import xbmcaddon
 import xml.etree.ElementTree
 
-import protocol
+
+# If any of these packages are missing, the script will attempt to proceed
+# without those features.
+try:
+    import alsaaudio
+except ImportError:
+    alsaaudio = None
 
 
+DEFAULT_VOLUME = 50L
 DEFAULT_LIRC_CONFIG = ('special://home/addons' +
                        '/plugin.program.remote.control.browser' +
                        '/resources/data/lircd/browser.lirc')
+
+
+class JsonRpcError(RuntimeError):
+    pass
 
 
 class CompetingLaunchError(RuntimeError):
@@ -64,14 +76,15 @@ class InterminableProgressBar:
 def makedirs(folder):
     try:
         os.makedirs(folder)
-    except OSError:
+    except OSError as e:
         # The directory may already exist.
-        xbmc.log('Failed to create directory: ' + folder, xbmc.LOGDEBUG)
+        if e.errno != errno.EEXIST or not os.path.isdir(folder):
+		raise
 
 
 def slurpLog(stream):
     for line in iter(stream.readline, b''):
-        xbmc.log('Browsing message: ' + line, xbmc.LOGDEBUG)
+        xbmc.log('BROWSER: ' + line, xbmc.LOGDEBUG)
     stream.close()
 
 
@@ -112,49 +125,97 @@ def lockPidfile(browserLockPath, pid):
                 xbmc.log('Failed to remove pidfile: ' + str(e))
 
 
-class VolumeRelay:
-    """Relays commands from a child process to the JSON-RPC API"""
+class VolumeGuard:
+    """Hands off volume control between Kodi and ALSA"""
 
     def __init__(self):
         self.lastRpcId = 0
-        self.relay = None
-        (self.parent, self.child) = socket.socketpair()
 
     def __enter__(self):
-        try:
-            result = self.executeJSONRPC(
-                'Application.GetProperties',
-                {'properties': ['muted', 'volume']})
-            initVolume = protocol.Volume(bool(result['muted']), int(result['volume']))
-        except (JsonRpcError, KeyError, ValueError) as e:
-            logger.debug('Could not retrieve current volume: ' + str(e))
-            initVolume = protocol.Volume(False, VOLUME_MAX)
+        mixer = self.getMixer()
+        if mixer is not None:
+            try:
+                result = self.executeJSONRPC(
+                    'Application.GetProperties',
+                    {'properties': ['muted', 'volume']})
+                mute = bool(result['muted'])
+                volume = int(result['volume'])
+            except (JsonRpcError, KeyError, ValueError) as e:
+                xbmc.log('Could not retrieve original Kodi volume: ' + str(e))
+                mute = False
+                volume = DEFAULT_VOLUME
+            self.kodi_mute = mute
+            self.kodi_volume = volume
 
-        # Execute volume commands from the child process.
-        relayStarting = threading.Thread(
-            target=self.relayVolume)
-        relayStarting.start()
-        self.relay = relayStarting
+            try:
+                self.alsa_channels = mixer.getvolume()
+            except alsaaudio.ALSAAudioError as e:
+                xbmc.log('Could not detect original ALSA volume: ' + str(e))
+                self.alsa_channels = None
 
-        return (initVolume, source)
+            try:
+                # Match the ALSA volume to Kodi's last volume.
+                # Muting the Master volume and then unmuting it is not a symmetric
+                # operation, because other controls end up muted. So a mute needs to be
+                # simulated by setting the volume level to zero.
+                if mute:
+                    mixer.setvolume(0)
+                else:
+                    mixer.setvolume(volume)
+            except alsaaudio.ALSAAudioError as e:
+                xbmc.log('Could not set ALSA volume: ' + str(e))
+
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        # FIXME: Is this safe? The other process could be halfway done writing to it!
-        self.child.shutdown(socket.SHUT_RDWR)
-        if self.relay is not None:
-            logger.debug(
-                'Joining with volume relay thread')
-            self.relay.join()
-            logger.debug(
-                'Joined with volume relay thread')
+        mixer = self.getMixer()
+        if mixer is not None:
+            # Match Kodi's volume to the Master volume.
+            try:
+                channels = mixer.getvolume()
+                volume = next(iter(channels))
+                xbmc.log('Detected ALSA volume: ' + str(volume), xbmc.LOGDEBUG)
+                if not volume:
+                    if self.kodi_volume:
+                        # The volume was probably zero because it was muted.
+                        mute = True
+                    else:
+                        # The volume and mute haven't changed.
+                        mute = self.kodi_mute
+                    volume = self.kodi_volume
+                else:
+                    mute = False
+                try:
+                    xbmc.log('Updating Kodi volume: ' + str(volume) +
+                            ', mute=' + str(mute), xbmc.LOGDEBUG)
+                    self.executeJSONRPC(
+                        'Application.SetMute', {'mute': mute})
+                    self.executeJSONRPC(
+                        'Application.SetVolume', {'volume': volume})
+                except (JsonRpcError, ValueError) as e:
+                    xbmc.log('Could not update Kodi volume: ' + str(e))
+            except alsaaudio.ALSAAudioError as e:
+                xbmc.log('Could not detect final ALSA volume: ' + str(e))
 
-    def relayVolume(self):
-        try:
-            while True:
-                strategy = cPickle.load(self.parent)
-                strategy.execute()
-        except EOFError:
-            pass
+            # Restore the master volume to its original level.
+            try:
+                for (channel, volume) in enumerate(self.alsa_channels):
+                    mixer.setvolume(volume, channel)
+            except alsaaudio.ALSAAudioError as e:
+                xbmc.log('Could not restore ALSA volume: ' + str(e))
+
+    def getMixer(self):
+        """Returns a ALSA mixer, which is not kept, because it tends to cache stale values"""
+        if alsaaudio is None:
+            xbmc.log('Not initializing an alsaaudio mixer', xbmc.LOGDEBUG)
+            mixer = None
+        else:
+            try:
+                mixer = alsaaudio.Mixer()
+            except alsaaudio.ALSAAudioError as e:
+                xbmc.log('Failed to initialize alsaaudio: ' + str(e))
+                mixer = None
+        return mixer
 
     def getNextRpcId(self):
         self.lastRpcId = self.lastRpcId + 1
@@ -559,7 +620,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         try:
             with (
                     suspendXbmcLirc()), (
-                    VolumeRelay()) as (initVolume, volumeSocket):
+                    VolumeGuard()):
                 self.spawnBrowser(
                     suspendKodi, browserCmd, browserLockPath, lircConfig, xdotoolPath)
         except CompetingLaunchError:
@@ -584,7 +645,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         else:
             creationflags = 0
         xbmc.log(
-            'Launching browser: ' +
+            'Launching wrapper for browser: ' +
             ' '.join(pipes.quote(arg) for arg in browserCmd),
             xbmc.LOGINFO)
         proc = subprocess.Popen(
@@ -598,28 +659,31 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             ] + browserCmd,
             creationflags=creationflags,
             stderr=subprocess.PIPE)
-        logger = threading.Thread(target=slurpLog, args=(proc.stderr,))
-        logger.start()
+        try:
+            slurper = threading.Thread(target=slurpLog, args=(proc.stderr,))
+            slurper.start()
 
-        with lockPidfile(browserLockPath, proc.pid):
-            monitor = xbmc.Monitor()
-            while not proc.poll() and not monitor.abortRequested():
-                # The only way to register for an event is to use this blocking
-                # method, even though that prevents this thread from waiting on the
-                # subprocess.
-                monitor.waitForAbort(1)
+            with lockPidfile(browserLockPath, proc.pid):
+                monitor = xbmc.Monitor()
+                while proc.poll() is None and not monitor.abortRequested():
+                    # The only way to register for an event is to use this blocking
+                    # method, even though that prevents this thread from waiting on the
+                    # subprocess.
+                    monitor.waitForAbort(1)
 
-        if not proc.poll():
-            try:
-                proc.terminate()
-            except OSError:
-                pass
-            proc.wait()
-        logger.join()
+        finally:
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+                proc.wait()
+            slurper.join()
+
         if proc.returncode:
-            xbmc.log('Failed to spawn browser: ' + str(proc.returncode))
-        xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
-            self.escapeNotification(self.getLocalizedString(30040))))
+            xbmc.log('Failed to spawn browser: errno=' + str(proc.returncode), xbmc.LOGINFO)
+            xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
+                self.escapeNotification(self.getLocalizedString(30040))))
 
     def unmarshalBool(self, val):
         STRING_ENCODING = {'false': False, 'true': True}

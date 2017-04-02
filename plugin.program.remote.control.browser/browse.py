@@ -1,10 +1,11 @@
+#!/usr/bin/env python
+
 import argparse
 import collections
 import cPickle
 import contextlib
 import datetime
 import errno
-import json
 import logging
 import os
 import pipes
@@ -14,8 +15,6 @@ import signal
 import socket
 import subprocess
 import threading
-
-import protocol
 
 
 # If any of these packages are missing, the script will attempt to proceed
@@ -34,13 +33,14 @@ except ImportError:
     pylirc = None
 
 
-# FIXME: Log on a different thread so the buffer doesn't fill
 logger = logging.getLogger('remotecontrolbrowser')
 logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.INFO)
 
 
 VOLUME_MIN = 0L
 VOLUME_MAX = 100L
+DEFAULT_VOLUME = 50L
 DEFAULT_VOLUME_STEP = 1L
 RELEASE_KEY_DELAY = datetime.timedelta(seconds=1)
 BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
@@ -49,97 +49,57 @@ BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
 PylircCode = collections.namedtuple('PylircCode', ('config', 'repeat'))
 
 
-class JsonRpcError(RuntimeError):
-    pass
-
-
-class KodiMixer:
-    """Mixer that integrates tightly with Kodi volume controls"""
+class AlsaMixer:
+    """Mixer that wraps ALSA"""
 
     def __init__(self):
-        if alsaaudio is None:
-            logger.debug('Not initializing an alsaaudio mixer')
-            self.delegate = None
+        delegate = self.getDelegate()
+        if delegate is None:
+            volume = DEFAULT_VOLUME
         else:
-            try:
-                self.delegate = alsaaudio.Mixer()
-            except alsaaudio.ALSAAudioError as e:
-                xbmc.log('Failed to initialize alsaaudio: ' + str(e))
-                self.delegate = None
-        try:
-            result = self.executeJSONRPC(
-                'Application.GetProperties',
-                {'properties': ['muted', 'volume']})
-            self.muted = bool(result['muted'])
-            self.volume = int(result['volume'])
-        except (JsonRpcError, KeyError, ValueError) as e:
-            logger.debug('Could not retrieve current volume: ' + str(e))
-            self.muted = False
-            self.volume = VOLUME_MAX
-
-    def __enter__(self):
-        if self.delegate is not None:
-            self.original = self.delegate.getvolume()
-        # Match the current volume to Kodi's last volume.
-        self.realizeVolume()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Restore the master volume to its original level.
-        if self.delegate is not None:
-            for (channel, volume) in enumerate(self.original):
-                self.delegate.setvolume(volume, channel)
+            channels = delegate.getvolume()
+            volume = next(iter(channels))
+            logger.debug('Detected initial volume: ' + str(volume))
+        self.mute = not volume
+        self.volume = volume or DEFAULT_VOLUME
 
     def realizeVolume(self):
-        # Muting the Master volume and then unmuting it is not a symmetric
-        # operation, because other controls end up muted. So a mute needs to be
-        # simulated by setting the volume level to zero.
-        if self.delegate is not None:
-            if self.muted:
-                self.delegate.setvolume(0)
+        delegate = self.getDelegate()
+        if delegate is not None:
+            # Muting the Master volume and then unmuting it is not a symmetric
+            # operation, because other controls end up muted. So a mute needs to be
+            # simulated by setting the volume level to zero.
+            if self.mute:
+                volume = 0
             else:
-                self.delegate.setvolume(self.volume)
+                volume = self.volume
+            logger.debug('Setting volume: ' + str(volume))
+            delegate.setvolume(volume)
 
     def toggleMute(self):
-        try:
-            result = self.executeJSONRPC(
-                'Application.SetMute', {'mute': 'toggle'})
-            self.muted = bool(result)
-        except (JsonRpcError, ValueError) as e:
-            logger.debug('Could not toggle mute: ' + str(e))
-            self.muted = not self.muted
+        self.mute = not self.mute
         self.realizeVolume()
 
     def incrementVolume(self):
-        self.muted = False
-        try:
-            result = self.executeJSONRPC(
-                'Application.SetVolume', {'volume': 'increment'})
-            self.volume = int(result)
-        except (JsonRpcError, ValueError) as e:
-            logger.debug('Could not increase volume: ' + str(e))
-            self.volume = min(self.volume + DEFAULT_VOLUME_STEP, VOLUME_MAX)
-        if self.delegate is not None:
-            self.delegate.setvolume(self.volume)
+        self.mute = False
+        self.volume = min(self.volume + DEFAULT_VOLUME_STEP, VOLUME_MAX)
+        self.realizeVolume()
 
     def decrementVolume(self):
-        try:
-            result = self.executeJSONRPC(
-                'Application.SetVolume', {'volume': 'decrement'})
-            self.volume = int(result)
-        except (JsonRpcError, ValueError) as e:
-            logger.debug('Could not decrease volume: ' + str(e))
-            self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
-        if self.delegate is not None and not self.muted:
-            self.delegate.setvolume(self.volume)
+        self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
+        self.realizeVolume()
 
-    def executeJSONRPC(self, method, params):
-        command = json.dumps({
-            'jsonrpc': '2.0',
-            'method': method,
-            'params': params,
-            'id': self.getNextRpcId()})
-        execute
+    def getDelegate(self):
+        if alsaaudio is None:
+            logger.debug('Not initializing an alsaaudio mixer')
+            delegate = None
+        else:
+            try:
+                delegate = alsaaudio.Mixer()
+            except alsaaudio.ALSAAudioError as e:
+                logger.info('Failed to initialize alsaaudio: ' + str(e))
+                delegate = None
+        return delegate
 
 
 def terminateHandler(abortSocket):
@@ -148,11 +108,8 @@ def terminateHandler(abortSocket):
 
 @contextlib.contextmanager
 def abortContext():
-    stopEvent = threading.Event()
     (sink, source) = socket.socketpair()
     with contextlib.closing(sink), contextlib.closing(source):
-        def handler(signal, frame):
-            pass
         signal.signal(
             signal.SIGTERM,
             lambda signal, frame: terminateHandler(source))
@@ -230,8 +187,6 @@ def execBrowser(browserCmd):
         try:
             logger.info(
                 'Launching browser: ' +
-                ' '.join(pipes.quote(arg) for arg in browserCmd))
-            print('Launching browser: ' +
                 ' '.join(pipes.quote(arg) for arg in browserCmd))
             proc = subprocess.Popen(browserCmd, close_fds=True)
             try:
@@ -326,7 +281,8 @@ def raiseBrowser(pid, xdotoolPath):
             activator.join()
 
 
-def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
+def driveBrowser(xdotoolPath, lircFd, browserExitFd, abortFd):
+    mixer = AlsaMixer()
     polling = [browserExitFd, abortFd]
     if lircFd is not None:
         polling.append(lircFd)
@@ -449,10 +405,9 @@ def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath):
             abortContext()) as abortFd, (
             suspendParentProcess(suspendKodi)), (
             runPylirc(lircConfig)) as lircFd, (
-            KodiMixer()) as mixer, (
             execBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid, xdotoolPath)):
-        driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd)
+        driveBrowser(xdotoolPath, lircFd, browserExitFd, abortFd)
 
 
 def main():
