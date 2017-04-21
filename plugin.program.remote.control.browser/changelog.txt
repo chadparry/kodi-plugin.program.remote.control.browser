@@ -1,3 +1,6 @@
+v1.2.0 (2017-04-20)
+- Support star and hash remote buttons
+
 v1.1.0 (2017-04-02)
 - Workaround for underpowered hosts
 
