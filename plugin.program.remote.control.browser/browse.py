@@ -205,7 +205,7 @@ def execBrowser(browserCmd):
                 # Give the browser a few seconds to shut down gracefully.
                 def terminateBrowser():
                     logger.info(
-                        'Forcefully killing the browser at the deadline')
+                        'Forcibly killing the browser at the deadline')
                     killBrowser(proc, signal.SIGKILL)
                 terminator = threading.Timer(
                     BROWSER_EXIT_DELAY.total_seconds(), terminateBrowser)
@@ -220,7 +220,7 @@ def execBrowser(browserCmd):
             finally:
                 if proc is not None:
                     # As a last resort, forcibly kill the browser.
-                    logger.info('Forcefully killing the browser')
+                    logger.info('Forcibly killing the browser')
                     killBrowser(proc, signal.SIGKILL)
                     proc.wait()
                     logger.debug('Waited for the browser to die')
