@@ -181,7 +181,9 @@ class VolumeGuard(object):
                 channels = mixer.getvolume()
                 volume = next(iter(channels))
                 xbmc.log('Detected ALSA volume: ' + str(volume), xbmc.LOGDEBUG)
-                if not volume:
+                if volume:
+                    mute = False
+                else:
                     if self.kodiVolume:
                         # The volume was probably zero because it was muted.
                         mute = True
@@ -189,8 +191,6 @@ class VolumeGuard(object):
                         # The volume and mute haven't changed.
                         mute = self.kodiMute
                     volume = self.kodiVolume
-                else:
-                    mute = False
                 try:
                     xbmc.log('Updating Kodi volume: ' + str(volume) +
                              ', mute=' + str(mute), xbmc.LOGDEBUG)
