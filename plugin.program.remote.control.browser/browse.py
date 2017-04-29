@@ -277,8 +277,8 @@ def raiseBrowser(pid, xdotoolPath):
             activator.join()
 
 
-def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
-    polling = [browserExitFd, abortFd]
+def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
+    polling = [browserExitFd, abortFd, parentFd]
     if lircFd is not None:
         polling.append(lircFd)
     releaseKeyTime = None
@@ -298,6 +298,9 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
                 break
             if abortFd in rlist:
                 logger.info('Exiting because a SIGTERM was received')
+                break
+            if parentFd in rlist:
+                logger.info('Exiting because the parent has disappeared')
                 break
             if lircFd is not None and lircFd in rlist:
                 buttons = pylirc.nextcode(True)
@@ -404,7 +407,7 @@ def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath, alsaControl):
             runPylirc(lircConfig)) as lircFd, (
             execBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid, xdotoolPath)):
-        driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd)
+        driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, sys.stdin)
 
 
 def main():

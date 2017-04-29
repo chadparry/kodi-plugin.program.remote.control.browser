@@ -679,6 +679,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 '--',
             ] + browserCmd,
             creationflags=creationflags,
+            # Closing stdin will inform the child of its parent's death.
+            stdin=subprocess.PIPE,
+            # The child will publish log lines via stderr.
             stderr=subprocess.PIPE)
         try:
             slurper = threading.Thread(target=slurpLog, args=(proc.stderr,))
@@ -693,12 +696,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     monitor.waitForAbort(1)
 
         finally:
-            if proc.poll() is None:
-                try:
-                    proc.terminate()
-                except OSError:
-                    pass
-                proc.wait()
+            proc.stderr.close()
+            proc.wait()
             slurper.join()
 
         if proc.returncode:
