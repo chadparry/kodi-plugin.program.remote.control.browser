@@ -52,20 +52,27 @@ class AlsaMixer(object):
     """Mixer that wraps ALSA"""
 
     def __init__(self, alsaControl):
-        self.alsaControl = alsaControl
-        delegate = self.getDelegate()
-        if delegate is None:
+        if alsaaudio is None:
+            logger.debug('Not initializing an alsaaudio mixer')
+            self.delegate = None
+        else:
+            try:
+                self.delegate = alsaaudio.Mixer(alsaControl)
+            except alsaaudio.ALSAAudioError as e:
+                logger.info('Failed to initialize alsaaudio: ' + str(e))
+                self.delegate = None
+
+        if self.delegate is None:
             volume = DEFAULT_VOLUME
         else:
-            channels = delegate.getvolume()
+            channels = self.delegate.getvolume()
             volume = next(iter(channels))
             logger.debug('Detected initial volume: ' + str(volume))
         self.mute = not volume
         self.volume = volume or DEFAULT_VOLUME
 
     def realizeVolume(self):
-        delegate = self.getDelegate()
-        if delegate is not None:
+        if self.delegate is not None:
             # Muting the Master volume and then unmuting it is not a symmetric
             # operation, because other controls end up muted. So a mute needs
             # to be simulated by setting the volume level to zero.
@@ -74,7 +81,7 @@ class AlsaMixer(object):
             else:
                 volume = self.volume
             logger.debug('Setting volume: ' + str(volume))
-            delegate.setvolume(volume)
+            self.delegate.setvolume(volume)
 
     def toggleMute(self):
         self.mute = not self.mute
@@ -88,18 +95,6 @@ class AlsaMixer(object):
     def decrementVolume(self):
         self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
         self.realizeVolume()
-
-    def getDelegate(self):
-        if alsaaudio is None:
-            logger.debug('Not initializing an alsaaudio mixer')
-            delegate = None
-        else:
-            try:
-                delegate = alsaaudio.Mixer(self.alsaControl)
-            except alsaaudio.ALSAAudioError as e:
-                logger.info('Failed to initialize alsaaudio: ' + str(e))
-                delegate = None
-        return delegate
 
 
 def terminateHandler(abortSocket):
