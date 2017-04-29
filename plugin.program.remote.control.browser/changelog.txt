@@ -1,3 +1,6 @@
+v1.2.1 (2017-04-29)
+- Exit browser if Kodi exits
+
 v1.2.0 (2017-04-20)
 - Support star and hash remote buttons
 
