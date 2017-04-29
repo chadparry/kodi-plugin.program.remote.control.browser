@@ -13,6 +13,7 @@ import shlex
 import signal
 import socket
 import subprocess
+import sys
 import threading
 
 
@@ -52,20 +53,27 @@ class AlsaMixer(object):
     """Mixer that wraps ALSA"""
 
     def __init__(self, alsaControl):
-        self.alsaControl = alsaControl
-        delegate = self.getDelegate()
-        if delegate is None:
+        if alsaaudio is None:
+            logger.debug('Not initializing an alsaaudio mixer')
+            self.delegate = None
+        else:
+            try:
+                self.delegate = alsaaudio.Mixer(alsaControl)
+            except alsaaudio.ALSAAudioError as e:
+                logger.info('Failed to initialize alsaaudio: ' + str(e))
+                self.delegate = None
+
+        if self.delegate is None:
             volume = DEFAULT_VOLUME
         else:
-            channels = delegate.getvolume()
+            channels = self.delegate.getvolume()
             volume = next(iter(channels))
             logger.debug('Detected initial volume: ' + str(volume))
         self.mute = not volume
         self.volume = volume or DEFAULT_VOLUME
 
     def realizeVolume(self):
-        delegate = self.getDelegate()
-        if delegate is not None:
+        if self.delegate is not None:
             # Muting the Master volume and then unmuting it is not a symmetric
             # operation, because other controls end up muted. So a mute needs
             # to be simulated by setting the volume level to zero.
@@ -74,7 +82,7 @@ class AlsaMixer(object):
             else:
                 volume = self.volume
             logger.debug('Setting volume: ' + str(volume))
-            delegate.setvolume(volume)
+            self.delegate.setvolume(volume)
 
     def toggleMute(self):
         self.mute = not self.mute
@@ -88,18 +96,6 @@ class AlsaMixer(object):
     def decrementVolume(self):
         self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
         self.realizeVolume()
-
-    def getDelegate(self):
-        if alsaaudio is None:
-            logger.debug('Not initializing an alsaaudio mixer')
-            delegate = None
-        else:
-            try:
-                delegate = alsaaudio.Mixer(self.alsaControl)
-            except alsaaudio.ALSAAudioError as e:
-                logger.info('Failed to initialize alsaaudio: ' + str(e))
-                delegate = None
-        return delegate
 
 
 def terminateHandler(abortSocket):
@@ -205,7 +201,7 @@ def execBrowser(browserCmd):
                 # Give the browser a few seconds to shut down gracefully.
                 def terminateBrowser():
                     logger.info(
-                        'Forcefully killing the browser at the deadline')
+                        'Forcibly killing the browser at the deadline')
                     killBrowser(proc, signal.SIGKILL)
                 terminator = threading.Timer(
                     BROWSER_EXIT_DELAY.total_seconds(), terminateBrowser)
@@ -220,7 +216,7 @@ def execBrowser(browserCmd):
             finally:
                 if proc is not None:
                     # As a last resort, forcibly kill the browser.
-                    logger.info('Forcefully killing the browser')
+                    logger.info('Forcibly killing the browser')
                     killBrowser(proc, signal.SIGKILL)
                     proc.wait()
                     logger.debug('Waited for the browser to die')
@@ -282,8 +278,8 @@ def raiseBrowser(pid, xdotoolPath):
             activator.join()
 
 
-def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
-    polling = [browserExitFd, abortFd]
+def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
+    polling = [browserExitFd, abortFd, parentFd]
     if lircFd is not None:
         polling.append(lircFd)
     releaseKeyTime = None
@@ -303,6 +299,9 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd):
                 break
             if abortFd in rlist:
                 logger.info('Exiting because a SIGTERM was received')
+                break
+            if parentFd in rlist:
+                logger.info('Exiting because the parent has disappeared')
                 break
             if lircFd is not None and lircFd in rlist:
                 buttons = pylirc.nextcode(True)
@@ -409,7 +408,7 @@ def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath, alsaControl):
             runPylirc(lircConfig)) as lircFd, (
             execBrowser(browserCmd)) as (browser, browserExitFd), (
             raiseBrowser(browser.pid, xdotoolPath)):
-        driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd)
+        driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, sys.stdin)
 
 
 def main():
