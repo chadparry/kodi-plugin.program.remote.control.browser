@@ -30,6 +30,14 @@ try:
     import alsaaudio
 except ImportError:
     alsaaudio = None
+try:
+    import pulsectl
+except ImportError:
+    pulsectl = None
+try:
+    import pyctl
+except ImportError:
+    pyctl = None
 
 
 DEFAULT_VOLUME = 50L
@@ -126,6 +134,56 @@ def lockPidfile(browserLockPath, pid):
                 xbmc.log('Failed to remove pidfile: ' + str(e))
 
 
+class AlsaWrapper(object):
+    """Interchangable wrapper for Alsa"""
+
+    def __init__(self, alsaControl):
+        if alsaaudio is None:
+            xbmc.log('Not initializing an alsaaudio mixer', xbmc.LOGDEBUG)
+            self.delegate = None
+        else:
+            try:
+                self.delegate = alsaaudio.Mixer(alsaControl)
+            except alsaaudio.ALSAAudioError as e:
+                xbmc.log('Failed to initialize alsaaudio: ' + str(e))
+                self.delegate = None
+
+    def getChannels(self):
+        return self.delegate.getvolume()
+
+    def setVolume(self, volume):
+        self.delegate.setvolume(volume)
+
+    def setChannels(self, channels):
+        for (channel, volume) in enumerate(channels):
+            self.delegate.setvolume(volume, channel)
+
+
+class PulseWrapper(object):
+    """Interchangable wrapper for Pulse"""
+
+    def __init__(self):
+        if pulsectl is None:
+            logger.debug('Not initializing a pulsectl mixer')
+            self.pulse = None
+            self.sink = None
+        else:
+            self.pulse = pulsectl.Pulse()
+            self.sink = next(iter(self.pulse.sink_list()))
+
+    def getChannels(self):
+        return [int(round(channel * 100)) for channel in self.sink.volume.values]
+
+    def setVolume(self, volume):
+        volume_buffer = self.sink.volume
+        volume_buffer.value_flat = volume / 100.
+        self.pulse.volume_set(self.sink, volume_buffer)
+
+    def setChannels(self, channels):
+        volume_buffer = pulsectl.PulseVolumeInfo([channel / 100. for channel in channels])
+        self.pulse.volume_set(self.sink, volume_buffer)
+
+
 class VolumeGuard(object):
     """Hands off volume control between Kodi and ALSA"""
 
@@ -153,7 +211,7 @@ class VolumeGuard(object):
             self.kodiVolume = volume
 
             try:
-                self.alsaChannels = mixer.getvolume()
+                self.alsaChannels = mixer.getChannels()
             except alsaaudio.ALSAAudioError as e:
                 xbmc.log('Could not detect original ALSA volume: ' + str(e))
                 self.alsaChannels = None
@@ -165,9 +223,9 @@ class VolumeGuard(object):
                 # So a mute needs to be simulated by setting the volume level
                 # to zero.
                 if mute:
-                    mixer.setvolume(0)
+                    mixer.setVolume(0)
                 else:
-                    mixer.setvolume(volume)
+                    mixer.setVolume(volume)
             except alsaaudio.ALSAAudioError as e:
                 xbmc.log('Could not set ALSA volume: ' + str(e))
 
@@ -178,9 +236,8 @@ class VolumeGuard(object):
         if mixer is not None:
             # Match Kodi's volume to the Master volume.
             try:
-                channels = mixer.getvolume()
+                channels = mixer.getChannels()
                 volume = next(iter(channels))
-                xbmc.log('Detected ALSA volume: ' + str(volume), xbmc.LOGDEBUG)
                 if volume:
                     mute = False
                 else:
@@ -205,25 +262,12 @@ class VolumeGuard(object):
 
             # Restore the master volume to its original level.
             try:
-                for (channel, volume) in enumerate(self.alsaChannels):
-                    mixer.setvolume(volume, channel)
+                mixer.setChannels(self.alsaChannels)
             except alsaaudio.ALSAAudioError as e:
                 xbmc.log('Could not restore ALSA volume: ' + str(e))
 
     def getMixer(self):
-        """Returns a ALSA mixer, which is not kept, because it tends to cache
-        stale values
-        """
-        if alsaaudio is None:
-            xbmc.log('Not initializing an alsaaudio mixer', xbmc.LOGDEBUG)
-            mixer = None
-        else:
-            try:
-                mixer = alsaaudio.Mixer(self.alsaControl)
-            except alsaaudio.ALSAAudioError as e:
-                xbmc.log('Failed to initialize alsaaudio: ' + str(e))
-                mixer = None
-        return mixer
+        return PulseWrapper() if self.alsaControl == 'pulse' else AlsaWrapper(self.alsaControl)
 
     def getNextRpcId(self):
         self.lastRpcId = self.lastRpcId + 1

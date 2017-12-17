@@ -24,6 +24,10 @@ try:
 except ImportError:
     alsaaudio = None
 try:
+    import pulsectl
+except ImportError:
+    pulsectl = None
+try:
     import psutil
 except ImportError:
     psutil = None
@@ -72,7 +76,7 @@ class AlsaMixer(object):
         self.mute = not volume
         self.volume = volume or DEFAULT_VOLUME
 
-    def realizeVolume(self):
+    def _realizeVolume(self):
         if self.delegate is not None:
             # Muting the Master volume and then unmuting it is not a symmetric
             # operation, because other controls end up muted. So a mute needs
@@ -86,16 +90,65 @@ class AlsaMixer(object):
 
     def toggleMute(self):
         self.mute = not self.mute
-        self.realizeVolume()
+        self._realizeVolume()
 
     def incrementVolume(self):
         self.mute = False
         self.volume = min(self.volume + DEFAULT_VOLUME_STEP, VOLUME_MAX)
-        self.realizeVolume()
+        self._realizeVolume()
 
     def decrementVolume(self):
         self.volume = max(self.volume - DEFAULT_VOLUME_STEP, VOLUME_MIN)
-        self.realizeVolume()
+        self._realizeVolume()
+
+
+class PulseMixer(object):
+    """Mixer that wraps Pulse"""
+
+    def __init__(self):
+        if pulsectl is None:
+            logger.debug('Not initializing a pulsectl mixer')
+            self.pulse = None
+            self.sink = None
+        else:
+            self.pulse = pulsectl.Pulse()
+            self.sink = next(iter(self.pulse.sink_list()))
+
+        if self.sink is None:
+            volume = DEFAULT_VOLUME / 100.
+        else:
+            channels = self.sink.volume.values
+            volume = self.sink.volume.value_flat
+            logger.debug('Detected initial volume: ' + str(volume))
+        self.mute = not volume
+        self.volume = volume or DEFAULT_VOLUME / 100.
+
+    def _realizeVolume(self):
+        if self.sink is not None:
+            # Muting the Master volume and then unmuting it is not a symmetric
+            # operation, because other controls end up muted. So a mute needs
+            # to be simulated by setting the volume level to zero.
+            if self.mute:
+                volume = 0
+            else:
+                volume = self.volume
+            logger.debug('Setting volume: ' + str(volume))
+            volume_buffer = self.sink.volume
+            volume_buffer.value_flat = volume
+            self.pulse.volume_set(self.sink, volume_buffer)
+
+    def toggleMute(self):
+        self.mute = not self.mute
+        self._realizeVolume()
+
+    def incrementVolume(self):
+        self.mute = False
+        self.volume = min(self.volume + DEFAULT_VOLUME_STEP / 100., 1.)
+        self._realizeVolume()
+
+    def decrementVolume(self):
+        self.volume = max(self.volume - DEFAULT_VOLUME_STEP / 100., 0.)
+        self._realizeVolume()
 
 
 def terminateHandler(abortSocket):
@@ -401,7 +454,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
 
 
 def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath, alsaControl):
-    mixer = AlsaMixer(alsaControl)
+    mixer = PulseMixer() if alsaControl == 'pulse' else AlsaMixer(alsaControl)
     with (
             abortContext()) as abortFd, (
             suspendParentProcess(suspendKodi)), (
