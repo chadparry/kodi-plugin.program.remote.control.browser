@@ -488,7 +488,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             xbmc.log('Failed to retrieve favicon: ' + str(e))
 
     def inputBookmark(
-            self, bookmarkId=None, defaultUrl='http://', defaultTitle=None):
+            self, bookmarkId=None, defaultUrl='https://', defaultTitle=None):
         keyboard = xbmc.Keyboard(defaultUrl, self.getLocalizedString(30004))
         keyboard.doModal()
         if not keyboard.isConfirmed():
