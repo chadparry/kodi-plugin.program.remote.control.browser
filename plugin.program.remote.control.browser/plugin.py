@@ -675,7 +675,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         browserArgs = self.getSetting('browserArgs').decode('utf_8')
         xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
         soundServer = self.getSetting('soundServer').decode('utf_8')
-        alsaControl = self.getSetting('alsaControl').decode('utf_8') if soundServer = 'ALSA' else None
+        alsaControl = self.getSetting('alsaControl').decode('utf_8') if soundServer == '1' else None
         suspendKodi = self.unmarshalBool(self.getSetting('suspendKodi'))
 
         if not browserPath or not os.path.isfile(browserPath):
@@ -727,10 +727,11 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             alsaControl):
         # The browser runs in its own subprocess so that it can continue after
         # Kodi stops.
-        suspendKodiFlags = []
-        if suspendKodi:
-            suspendKodiFlags.append('--suspend-kodi')
+        suspendKodiFlags = ['--suspend-kodi'] if suspendKodi else []
         browsePath = os.path.join(self.addonFolder, 'browse.py')
+        alsaCmd = [] if alsaControl is None else [
+                '--alsa-control', alsaControl,
+            ]
         if xbmc.getCondVisibility('System.Platform.Windows'):
             # On Windows, the Popen will block unless close_fds is True and
             # creationflags is DETACHED_PROCESS.
@@ -742,18 +743,18 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             'Launching wrapper for browser: ' +
             ' '.join(pipes.quote(arg) for arg in browserCmd),
             xbmc.LOGINFO)
-        alsaCmd = [] if alsaCmd is None else [
-                '--alsa-control', alsaControl,
-                '--',
-            ]
         proc = subprocess.Popen(
             [
                 sys.executable,
                 browsePath,
-            ] + suspendKodiFlags + [
+            ] +
+            suspendKodiFlags +
+            alsaCmd +
+            [
                 '--lirc-config', lircConfig,
                 '--xdotool-path', xdotoolPath,
-            ] + alsaCmd + browserCmd,
+                '--',
+            ] +
             browserCmd,
             creationflags=creationflags,
             # Closing stdin will inform the child of its parent's death.
