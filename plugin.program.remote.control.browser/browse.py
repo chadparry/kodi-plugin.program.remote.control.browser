@@ -302,7 +302,7 @@ def activateWindow(cmd, proc, isAborting, xdotoolPath):
 
 @contextlib.contextmanager
 def raiseBrowser(pid, xdotoolPath):
-    if not xdotoolPath:
+    if xdotoolPath is None:
         logger.debug('Not raising the browser')
         yield
         return
@@ -433,7 +433,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
                 raise RuntimeError('Unrecognized LIRC config: ' + command)
 
             if isReleasing and releaseKeyTime is not None:
-                if xdotoolPath:
+                if xdotoolPath is not None:
                     # Deselect the current multi-tap character.
                     logger.debug('Executing xdotool for multi-tap release')
                     subprocess.check_call(
@@ -443,7 +443,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
             releaseKeyTime = nextReleaseKeyTime
 
             if inputs is not None:
-                if xdotoolPath:
+                if xdotoolPath is not None:
                     cmd = [xdotoolPath] + inputs
                     logger.debug(
                         'Executing: ' +
@@ -454,7 +454,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
 
 
 def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath, alsaControl):
-    mixer = PulseMixer() if alsaControl == 'pulse' else AlsaMixer(alsaControl)
+    mixer = PulseMixer() if alsaControl is None else AlsaMixer(alsaControl)
     with (
             abortContext()) as abortFd, (
             suspendParentProcess(suspendKodi)), (
@@ -467,7 +467,7 @@ def wrapBrowser(browserCmd, suspendKodi, lircConfig, xdotoolPath, alsaControl):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--suspend-kodi', action='store_true')
-    parser.add_argument('--lirc-config')
+    parser.add_argument('--lirc-config', required=True)
     parser.add_argument('--xdotool-path')
     parser.add_argument('--alsa-control')
     parser.add_argument('cmd', nargs='+')
