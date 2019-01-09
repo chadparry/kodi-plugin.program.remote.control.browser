@@ -29,10 +29,12 @@ import xbmcaddon
 try:
     import alsaaudio
 except ImportError:
+    xbmc.log('Missing Python package: alsaaudio', xbmc.LOGDEBUG)
     alsaaudio = None
 try:
     import pulsectl
 except ImportError:
+    xbmc.log('Missing Python package: pulsectl', xbmc.LOGDEBUG)
     pulsectl = None
 
 
