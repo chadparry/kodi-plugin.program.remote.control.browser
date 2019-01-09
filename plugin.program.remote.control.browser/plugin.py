@@ -177,7 +177,6 @@ class PulseWrapper(object):
     def __init__(self):
         if pulsectl is None:
             xbmc.log('Not initializing a pulsectl mixer', xbmc.LOGDEBUG)
-
             raise VolumeError('No pulsectl package')
         else:
             try:
