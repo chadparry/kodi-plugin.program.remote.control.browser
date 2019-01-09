@@ -314,7 +314,7 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
         return unmarshalled
 
     def storeDefaults(self):
-        xbmc.log('Generating default addon settings')
+        xbmc.log('Generating default add-on settings')
         self.setSetting(
             'memorySufficient',
             self.marshalBool(self.isMemorySufficient()))
