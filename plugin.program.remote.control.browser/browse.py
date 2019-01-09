@@ -24,13 +24,13 @@ try:
 except ImportError:
     alsaaudio = None
 try:
-    import pulsectl
-except ImportError:
-    pulsectl = None
-try:
     import psutil
 except ImportError:
     psutil = None
+try:
+    import pulsectl
+except ImportError:
+    pulsectl = None
 try:
     import pylirc
 except ImportError:
