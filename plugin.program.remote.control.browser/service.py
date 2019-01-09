@@ -27,6 +27,11 @@ except ImportError:
     xbmc.log('Missing Python package: psutil')
     psutil = None
 try:
+    import pulsectl
+except ImportError:
+    xbmc.log('Missing Python package: pulsectl')
+    pulsectl = None
+try:
     import pylirc
 except ImportError:
     xbmc.log('Missing Python package: pylirc2')
@@ -314,8 +319,9 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             'memorySufficient',
             self.marshalBool(self.isMemorySufficient()))
         self.setSetting('psutilInstalled', self.marshalBool(psutil))
-        self.setSetting('alsaaudioInstalled', self.marshalBool(alsaaudio))
         self.setSetting('pylircInstalled', self.marshalBool(pylirc))
+        self.setSetting('alsaaudioInstalled', self.marshalBool(alsaaudio))
+        self.setSetting('pulsectlInstalled', self.marshalBool(pulsectl))
 
         browserPath = self.getSetting('browserPath').decode('utf_8')
         xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')

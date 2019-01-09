@@ -13,9 +13,11 @@
         <setting label="30039" type="lsep" visible="eq(-1,false)" />
         <setting id="psutilInstalled" type="bool" visible="false" default="true" />
         <setting label="30022" type="lsep" visible="eq(-1,false)" />
-        <setting id="alsaaudioInstalled" type="bool" visible="false" default="true" />
-        <setting label="30023" type="lsep" visible="eq(-1,false)" />
         <setting id="pylircInstalled" type="bool" visible="false" default="true" />
         <setting label="30024" type="lsep" visible="eq(-1,false)" />
+        <setting id="alsaaudioInstalled" type="bool" visible="false" default="true" />
+        <setting label="30023" type="lsep" visible="eq(-1,false)+eq(-9,1)" />
+        <setting id="pulsectlInstalled" type="bool" visible="false" default="true" />
+        <setting label="30046" type="lsep" visible="eq(-1,false)+eq(-11,0)" />
     </category>
 </settings>
