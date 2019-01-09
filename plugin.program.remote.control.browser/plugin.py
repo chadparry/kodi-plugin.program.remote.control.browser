@@ -34,10 +34,6 @@ try:
     import pulsectl
 except ImportError:
     pulsectl = None
-try:
-    import pyctl
-except ImportError:
-    pyctl = None
 
 
 DEFAULT_VOLUME = 50L
