@@ -33,7 +33,6 @@ except ImportError:
     pylirc = None
 
 
-DEFAULT_LINKCAST_PORT = 49029
 MINIMUM_RAM_REQUIREMENT = 1.5 * 2**30  # 1.5 GB
 
 
