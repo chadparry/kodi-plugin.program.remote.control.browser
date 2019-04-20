@@ -741,7 +741,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             'Launching wrapper for browser: ' +
             ' '.join(pipes.quote(arg) for arg in browserCmd),
             xbmc.LOGINFO)
-        proc = subprocess.Popen(
+        commandArgs = (
             [
                 sys.executable,
                 browsePath,
@@ -753,7 +753,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 '--xdotool-path', xdotoolPath,
                 '--',
             ] +
-            browserCmd,
+            browserCmd)
+        proc = subprocess.Popen(
+            commandArgs,
             creationflags=creationflags,
             # Closing stdin will inform the child of its parent's death.
             stdin=subprocess.PIPE,
@@ -772,14 +774,16 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     monitor.waitForAbort(1)
 
         finally:
+            proc.stdin.close()
             proc.stderr.close()
             proc.wait()
             slurper.join()
 
         if proc.returncode:
+            commandLine = ' '.join(pipes.quote(arg) for arg in commandArgs)
             xbmc.log(
-                'Failed to spawn browser: errno=' + str(proc.returncode),
-                xbmc.LOGINFO)
+                'Failed to spawn browser, errno=' + str(proc.returncode) + ': ' + commandLine,
+                xbmc.LOGERROR)
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
                 self.escapeNotification(self.getLocalizedString(30040))))
 
