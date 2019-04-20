@@ -730,6 +730,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         alsaCmd = [] if alsaControl is None else [
                 '--alsa-control', alsaControl,
             ]
+        xdotoolCmd = [] if xdotoolPath is None else [
+                '--xdotool-path', xdotoolPath,
+            ]
         if xbmc.getCondVisibility('System.Platform.Windows'):
             # On Windows, the Popen will block unless close_fds is True and
             # creationflags is DETACHED_PROCESS.
@@ -748,9 +751,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             ] +
             suspendKodiFlags +
             alsaCmd +
+            xdotoolCmd +
             [
                 '--lirc-config', lircConfig,
-                '--xdotool-path', xdotoolPath,
                 '--',
             ] +
             browserCmd)
