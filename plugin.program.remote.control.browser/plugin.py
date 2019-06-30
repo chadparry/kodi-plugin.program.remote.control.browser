@@ -285,10 +285,13 @@ class VolumeGuard(object):
                 xbmc.log('Could not detect final ALSA volume: ' + str(e))
 
             # Restore the master volume to its original level.
-            try:
-                mixer.setChannels(self.alsaChannels)
-            except VolumeError as e:
-                xbmc.log('Could not restore ALSA volume: ' + str(e))
+            if self.alsaChannels:
+                try:
+                    mixer.setChannels(self.alsaChannels)
+                except VolumeError as e:
+                    xbmc.log('Could not restore ALSA volume: ' + str(e))
+            else:
+                xbmc.log('Original system volume not restored because it is not known')
 
     def getMixer(self):
         try:
