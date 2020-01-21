@@ -829,6 +829,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('handle', type=int)
     parser.add_argument('params', type=parsedParams)
+    parser.add_argument('flags', nargs='*')
     args = parser.parse_args()
 
     plugin = RemoteControlBrowserPlugin(args.handle)
