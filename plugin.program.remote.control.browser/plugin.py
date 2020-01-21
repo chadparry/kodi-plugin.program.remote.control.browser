@@ -285,10 +285,13 @@ class VolumeGuard(object):
                 xbmc.log('Could not detect final ALSA volume: ' + str(e))
 
             # Restore the master volume to its original level.
-            try:
-                mixer.setChannels(self.alsaChannels)
-            except VolumeError as e:
-                xbmc.log('Could not restore ALSA volume: ' + str(e))
+            if self.alsaChannels:
+                try:
+                    mixer.setChannels(self.alsaChannels)
+                except VolumeError as e:
+                    xbmc.log('Could not restore ALSA volume: ' + str(e))
+            else:
+                xbmc.log('Original system volume not restored because it is not known')
 
     def getMixer(self):
         try:
@@ -730,6 +733,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         alsaCmd = [] if alsaControl is None else [
                 '--alsa-control', alsaControl,
             ]
+        xdotoolCmd = [] if xdotoolPath is None else [
+                '--xdotool-path', xdotoolPath,
+            ]
         if xbmc.getCondVisibility('System.Platform.Windows'):
             # On Windows, the Popen will block unless close_fds is True and
             # creationflags is DETACHED_PROCESS.
@@ -741,19 +747,21 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             'Launching wrapper for browser: ' +
             ' '.join(pipes.quote(arg) for arg in browserCmd),
             xbmc.LOGINFO)
-        proc = subprocess.Popen(
+        commandArgs = (
             [
                 sys.executable,
                 browsePath,
             ] +
             suspendKodiFlags +
             alsaCmd +
+            xdotoolCmd +
             [
                 '--lirc-config', lircConfig,
-                '--xdotool-path', xdotoolPath,
                 '--',
             ] +
-            browserCmd,
+            browserCmd)
+        proc = subprocess.Popen(
+            commandArgs,
             creationflags=creationflags,
             # Closing stdin will inform the child of its parent's death.
             stdin=subprocess.PIPE,
@@ -772,14 +780,16 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     monitor.waitForAbort(1)
 
         finally:
+            proc.stdin.close()
             proc.stderr.close()
             proc.wait()
             slurper.join()
 
         if proc.returncode:
+            commandLine = ' '.join(pipes.quote(arg) for arg in commandArgs)
             xbmc.log(
-                'Failed to spawn browser: errno=' + str(proc.returncode),
-                xbmc.LOGINFO)
+                'Failed to spawn browser, errno=' + str(proc.returncode) + ': ' + commandLine,
+                xbmc.LOGERROR)
             xbmc.executebuiltin('XBMC.Notification(Info:,"{}",5000)'.format(
                 self.escapeNotification(self.getLocalizedString(30040))))
 
@@ -819,6 +829,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('handle', type=int)
     parser.add_argument('params', type=parsedParams)
+    parser.add_argument('flags', nargs='*')
     args = parser.parse_args()
 
     plugin = RemoteControlBrowserPlugin(args.handle)
