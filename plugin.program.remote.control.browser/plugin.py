@@ -101,17 +101,6 @@ def slurpLog(stream):
 
 
 @contextlib.contextmanager
-def suspendXbmcLirc():
-    xbmc.log('Suspending XBMC LIRC', xbmc.LOGDEBUG)
-    xbmc.executebuiltin('LIRC.Stop')
-    try:
-        yield
-    finally:
-        xbmc.log('Resuming XBMC LIRC', xbmc.LOGDEBUG)
-        xbmc.executebuiltin('LIRC.Start')
-
-
-@contextlib.contextmanager
 def lockPidfile(browserLockPath, pid):
     isMine = False
     try:
@@ -135,6 +124,20 @@ def lockPidfile(browserLockPath, pid):
                 os.remove(browserLockPath)
             except OSError as e:
                 xbmc.log('Failed to remove pidfile: ' + str(e))
+
+
+class KeySink(xbmcgui.Window):
+    def __enter__(self):
+        xbmc.log('Starting capture of all keys', xbmc.LOGDEBUG)
+        self.show()
+
+    def __exit__(self, type, value, traceback):
+        xbmc.log('Finishing capture of all keys', xbmc.LOGDEBUG)
+        self.close()
+
+    def onAction(self, action):
+        """Ignore all actions"""
+        pass
 
 
 class AlsaWrapper(object):
@@ -703,7 +706,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             player.pause()
         try:
             with (
-                    suspendXbmcLirc()), (
+                    KeySink()), (
                     VolumeGuard(alsaControl)):
                 self.spawnBrowser(
                     suspendKodi,
