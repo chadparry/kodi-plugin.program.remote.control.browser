@@ -94,8 +94,16 @@ def makedirs(folder):
             raise
 
 
-def slurpLog(stream):
-    for line in iter(stream.readline, b''):
+def slurpLine(stream, slurpLogGuard):
+    with slurpLogGuard:
+        try:
+            return stream.readline()
+        except ValueError:
+            return b''
+
+
+def slurpLog(stream, slurpLogGuard):
+    for line in iter(lambda: slurpLine(stream, slurpLogGuard), b''):
         xbmc.log('BROWSER: ' + line, xbmc.LOGDEBUG)
     stream.close()
 
@@ -770,8 +778,9 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             stdin=subprocess.PIPE,
             # The child will publish log lines via stderr.
             stderr=subprocess.PIPE)
+        slurpLogGuard = threading.Lock()
         try:
-            slurper = threading.Thread(target=slurpLog, args=(proc.stderr,))
+            slurper = threading.Thread(target=slurpLog, args=(proc.stderr, slurpLogGuard))
             slurper.start()
 
             with lockPidfile(browserLockPath, proc.pid):
@@ -784,7 +793,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
         finally:
             proc.stdin.close()
-            proc.stderr.close()
+            with slurpLogGuard:
+                proc.stderr.close()
             proc.wait()
             slurper.join()
 
