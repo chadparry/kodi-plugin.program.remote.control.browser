@@ -315,12 +315,21 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
 
     def storeDefaults(self):
         xbmc.log('Generating default add-on settings')
-        self.setSetting(
-            'memorySufficient',
-            self.marshalBool(self.isMemorySufficient()))
+        memorySufficient = self.isMemorySufficient()
+        if not memorySufficient:
+            xbmc.log('Insufficient memory', xbmc.LOGWARNING)
+        self.setSetting('memorySufficient', self.marshalBool(memorySufficient))
+        if not psutil:
+            xbmc.log('Missing Python package: psutil', xbmc.LOGWARNING)
         self.setSetting('psutilInstalled', self.marshalBool(psutil))
+        if not pylirc:
+            xbmc.log('Missing Python package: pylirc2', xbmc.LOGWARNING)
         self.setSetting('pylircInstalled', self.marshalBool(pylirc))
+        if not alsaaudio:
+            xbmc.log('Missing Python package: pyalsaaudio', xbmc.LOGWARNING)
         self.setSetting('alsaaudioInstalled', self.marshalBool(alsaaudio))
+        if not pulsectl:
+            xbmc.log('Missing Python package: pulsectl', xbmc.LOGWARNING)
         self.setSetting('pulsectlInstalled', self.marshalBool(pulsectl))
 
         browserPath = self.getSetting('browserPath').decode('utf_8')
