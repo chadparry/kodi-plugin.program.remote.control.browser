@@ -315,12 +315,21 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
 
     def storeDefaults(self):
         xbmc.log('Generating default add-on settings')
-        self.setSetting(
-            'memorySufficient',
-            self.marshalBool(self.isMemorySufficient()))
+        memorySufficient = self.isMemorySufficient()
+        if not memorySufficient:
+            xbmc.log('Insufficient memory', xbmc.LOGWARNING)
+        self.setSetting('memorySufficient', self.marshalBool(memorySufficient))
+        if not psutil:
+            xbmc.log('Missing Python package: psutil', xbmc.LOGWARNING)
         self.setSetting('psutilInstalled', self.marshalBool(psutil))
+        if not pylirc:
+            xbmc.log('Missing Python package: pylirc2', xbmc.LOGWARNING)
         self.setSetting('pylircInstalled', self.marshalBool(pylirc))
+        if not alsaaudio:
+            xbmc.log('Missing Python package: pyalsaaudio', xbmc.LOGWARNING)
         self.setSetting('alsaaudioInstalled', self.marshalBool(alsaaudio))
+        if not pulsectl:
+            xbmc.log('Missing Python package: pulsectl', xbmc.LOGWARNING)
         self.setSetting('pulsectlInstalled', self.marshalBool(pulsectl))
 
         browserPath = self.getSetting('browserPath').decode('utf_8')
@@ -353,13 +362,13 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
         xbmc.log('Starting linkcast server on port ' + str(linkcastPort))
         try:
             self.linkcastServer = LinkcastServer(self, ('', linkcastPort))
-        except IOError as e:
-            xbmc.log('Could not start linkcast server: ' + str(e))
 
-        threadStarting = threading.Thread(
-            target=self.linkcastServer.serve_forever)
-        threadStarting.start()
-        self.linkcastServerThread = threadStarting
+            threadStarting = threading.Thread(
+                target=self.linkcastServer.serve_forever)
+            threadStarting.start()
+            self.linkcastServerThread = threadStarting
+        except IOError as e:
+            xbmc.log('Could not start linkcast server: ' + str(e), xbmc.LOGERROR)
 
     def stopLinkcastServer(self):
         if self.linkcastServer is not None:

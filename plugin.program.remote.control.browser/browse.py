@@ -339,15 +339,80 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
     polling = [browserExitFd, abortFd, parentFd]
     if lircFd is not None:
         polling.append(lircFd)
-    releaseKeyTime = None
-    repeatKeys = None
-    isExiting = False
-    while not isExiting:
-        if releaseKeyTime is None:
+
+    class CommandState:
+        releaseKeyTime = None
+        nextReleaseKeyTime = None
+        isReleasing = False
+        repeatKeys = None
+        repeatIndex = 0
+        isExiting = False
+
+    def handleVolumeUpCommand(command, args, repeat):
+        mixer.incrementVolume()
+    def handleVolumeDownCommand(command, args, repeat):
+        mixer.decrementVolume()
+    def handleMuteCommand(command, args, repeat):
+        mixer.toggleMute()
+    def handleMultitapCommand(command, args, repeat):
+        if CommandState.releaseKeyTime is not None and CommandState.repeatKeys == args:
+            CommandState.repeatIndex += 1
+        else:
+            CommandState.isReleasing = True
+            CommandState.repeatKeys = args
+            CommandState.repeatIndex = 0
+        CommandState.nextReleaseKeyTime = (datetime.datetime.now() + RELEASE_KEY_DELAY)
+        current = args[CommandState.repeatIndex % len(args)]
+        return ['key', '--clearmodifiers', '--', current, 'Shift+Left']
+    def handleKeyCommand(command, args, repeat):
+        CommandState.isReleasing = True
+        return ['key', '--clearmodifiers', '--'] + args
+    def handleClickCommand(command, args, repeat):
+        CommandState.isReleasing = True
+        # NOTE: XDOTOOL HACK
+        # Some platforms include a buggy version of xdotool,
+        # (https://github.com/jordansissel/xdotool/pull/102).
+        # If you have version 3.20150503.1, then the mouse button
+        # will not be released correctly. The workaround is to
+        # uncomment the following line.
+        #return ['click', '1']
+        return ['click', '--clearmodifiers', '1']
+    def handleMouseCommand(command, args, repeat):
+        step = min(repeat, 10)
+        (horizontal, vertical) = args
+        acceleratedHorizontal = str(int(horizontal) * step ** 2)
+        acceleratedVertical = str(int(vertical) * step ** 2)
+        return [
+            'mousemove_relative',
+            '--',
+            acceleratedHorizontal,
+            acceleratedVertical,
+        ]
+    def handleExitCommand(command, args, repeat):
+        CommandState.isExiting = True
+    def handleReleaseCommand(command, args, repeat):
+        CommandState.isReleasing = True
+    def handleUnrecognizedCommand(command, args, repeat):
+        raise RuntimeError('Unrecognized LIRC config: ' + command)
+
+    commandHandlers = {
+        'VOLUME_UP': handleVolumeUpCommand,
+        'VOLUME_DOWN': handleVolumeDownCommand,
+        'MUTE': handleMuteCommand,
+        'MULTITAP': handleMultitapCommand,
+        'KEY': handleKeyCommand,
+        'CLICK': handleClickCommand,
+        'MOUSE': handleMouseCommand,
+        'EXIT': handleExitCommand,
+        'RELEASE': handleReleaseCommand,
+    }
+
+    while not CommandState.isExiting:
+        if CommandState.releaseKeyTime is None:
             timeout = None
         else:
             timeout = max(
-                (releaseKeyTime - datetime.datetime.now()).total_seconds(),
+                (CommandState.releaseKeyTime - datetime.datetime.now()).total_seconds(),
                 0)
         try:
             (rlist, _, _) = select.select(polling, [], [], timeout)
@@ -375,68 +440,24 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
             raise
         codes = ([PylircCode(**button) for button in buttons]
                  if buttons else [])
-        if (releaseKeyTime is not None and
-                releaseKeyTime <= datetime.datetime.now()):
+        if (CommandState.releaseKeyTime is not None and
+                CommandState.releaseKeyTime <= datetime.datetime.now()):
             codes.append(PylircCode(config='RELEASE', repeat=0))
 
         for code in codes:
             logger.debug('Received LIRC code: ' + str(code))
             tokens = shlex.split(code.config)
             (command, args) = (tokens[0], tokens[1:])
-            isReleasing = False
-            nextReleaseKeyTime = None
-            inputs = None
+            CommandState.isReleasing = False
+            CommandState.nextReleaseKeyTime = None
 
-            if command == 'VOLUME_UP':
-                mixer.incrementVolume()
-            elif command == 'VOLUME_DOWN':
-                mixer.decrementVolume()
-            elif command == 'MUTE':
-                mixer.toggleMute()
-            elif command == 'MULTITAP':
-                if releaseKeyTime is not None and repeatKeys == args:
-                    repeatIndex += 1
-                else:
-                    isReleasing = True
-                    repeatKeys = args
-                    repeatIndex = 0
-                nextReleaseKeyTime = (datetime.datetime.now() +
-                                      RELEASE_KEY_DELAY)
-                current = args[repeatIndex % len(args)]
-                inputs = [
-                    'key', '--clearmodifiers', '--', current, 'Shift+Left']
-            elif command == 'KEY':
-                isReleasing = True
-                inputs = ['key', '--clearmodifiers', '--'] + args
-            elif command == 'CLICK':
-                isReleasing = True
-                inputs = ['click', '--clearmodifiers', '1']
-                # NOTE: XDOTOOL HACK
-                # Some platforms include a buggy version of xdotool,
-                # (https://github.com/jordansissel/xdotool/pull/102).
-                # If you have version 3.20150503.1, then the mouse button
-                # will not be released correctly. The workaround is to
-                # uncomment the following line.
-                #inputs = ['click', '1']
-            elif command == 'MOUSE':
-                step = min(code.repeat, 10)
-                (horizontal, vertical) = args
-                acceleratedHorizontal = str(int(horizontal) * step ** 2)
-                acceleratedVertical = str(int(vertical) * step ** 2)
-                inputs = [
-                    'mousemove_relative',
-                    '--',
-                    acceleratedHorizontal,
-                    acceleratedVertical]
-            elif command == 'EXIT':
-                isExiting = True
+            handler = commandHandlers.get(command, handleUnrecognizedCommand)
+            inputs = handler(command, args, code.repeat)
+
+            if CommandState.isExiting:
                 break
-            elif command == 'RELEASE':
-                isReleasing = True
-            else:
-                raise RuntimeError('Unrecognized LIRC config: ' + command)
 
-            if isReleasing and releaseKeyTime is not None:
+            if CommandState.isReleasing and CommandState.releaseKeyTime is not None:
                 if xdotoolPath is not None:
                     # Deselect the current multi-tap character.
                     logger.debug('Executing xdotool for multi-tap release')
@@ -444,7 +465,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
                         [xdotoolPath, 'key', '--clearmodifiers', 'Right'])
                 else:
                     logger.debug('Ignoring xdotool for multi-tap release')
-            releaseKeyTime = nextReleaseKeyTime
+            CommandState.releaseKeyTime = CommandState.nextReleaseKeyTime
 
             if inputs is not None:
                 if xdotoolPath is not None:
