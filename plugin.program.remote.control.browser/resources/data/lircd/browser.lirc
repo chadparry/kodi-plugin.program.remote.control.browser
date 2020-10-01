@@ -61,6 +61,15 @@ end
 begin
     remote = devinput-32
     prog = browser
+    button = KEY_BACK
+    config = EXIT
+    repeat = 0
+    delay = 0
+end
+
+begin
+    remote = devinput-32
+    prog = browser
     button = KEY_EXIT
     config = EXIT
     repeat = 0
