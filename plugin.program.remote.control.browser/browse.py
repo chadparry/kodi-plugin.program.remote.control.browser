@@ -378,10 +378,10 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
         #return ['click', '1']
         return ['click', '--clearmodifiers', '1']
     def handleMouseCommand(command, args, repeat):
-        step = min(repeat, 10)
+        step = (repeat + 2) ** 2
         (horizontal, vertical) = args
-        acceleratedHorizontal = str(int(horizontal) * step ** 2)
-        acceleratedVertical = str(int(vertical) * step ** 2)
+        acceleratedHorizontal = str(int(horizontal) * step)
+        acceleratedVertical = str(int(vertical) * step)
         return [
             'mousemove_relative',
             '--',
