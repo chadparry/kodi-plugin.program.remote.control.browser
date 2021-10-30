@@ -5,7 +5,7 @@ import io
 import os
 import shutil
 import tempfile
-import urllib.request, urllib.error, urllib.parse
+import urllib.request
 
 import PIL.Image
 import PIL.PngImagePlugin

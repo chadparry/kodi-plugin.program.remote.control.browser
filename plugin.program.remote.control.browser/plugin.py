@@ -11,8 +11,7 @@ import shlex
 import subprocess
 import sys
 import threading
-import urllib.request, urllib.parse, urllib.error
-import urllib.request, urllib.error, urllib.parse
+import urllib.request
 import urllib.parse
 import uuid
 import xml.etree.ElementTree

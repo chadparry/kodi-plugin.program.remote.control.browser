@@ -5,7 +5,6 @@ import json
 import os
 import re
 import threading
-import urllib.request, urllib.parse, urllib.error
 import urllib.parse
 import xml.etree.ElementTree
 
