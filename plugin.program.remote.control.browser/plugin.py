@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import datetime
 import errno
+import functools
 import json
 import math
 import os
@@ -21,7 +22,6 @@ import xbmc
 import xbmcplugin
 import xbmcgui
 import xbmcaddon
-from functools import reduce
 
 
 # If any of these packages are missing, the script will attempt to proceed
@@ -481,7 +481,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     linkElements,
                     key=lambda element: (
                         # Prefer large images.
-                        reduce(
+                        functools.reduce(
                             lambda prev, cur: prev * int(cur, 10),
                             re.findall(r'\d+', element['sizes']),
                             1)
