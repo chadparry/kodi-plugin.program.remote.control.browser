@@ -1,3 +1,6 @@
+v1.7.0 (2021-10-30)
+- Increase mouse sensitivity
+
 v1.6.0 (2020-05-08)
 - Capture keys with a window
 
