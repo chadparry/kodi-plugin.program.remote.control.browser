@@ -19,9 +19,10 @@ import xml.etree.ElementTree
 
 import bs4
 import xbmc
-import xbmcplugin
-import xbmcgui
 import xbmcaddon
+import xbmcgui
+import xbmcplugin
+import xbmcvfs
 
 
 # If any of these packages are missing, the script will attempt to proceed
@@ -336,10 +337,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         super(RemoteControlBrowserPlugin, self).__init__()
         self.handle = handle
         self.pluginId = self.getAddonInfo('id')
-        self.addonFolder = xbmc.translatePath(
-            self.getAddonInfo('path')).decode('utf_8')
-        self.profileFolder = xbmc.translatePath(
-            self.getAddonInfo('profile')).decode('utf_8')
+        self.addonFolder = xbmcvfs.translatePath(self.getAddonInfo('path'))
+        self.profileFolder = xbmcvfs.translatePath(self.getAddonInfo('profile'))
         self.bookmarksPath = os.path.join(self.profileFolder, 'bookmarks.xml')
         self.defaultBookmarksPath = os.path.join(
             self.addonFolder, 'resources/data/bookmarks.xml')
@@ -674,20 +673,20 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         tree = self.readBookmarks()
         bookmark = self.getBookmarkElement(tree, bookmarkId)
         url = bookmark.get('url')
-        lircConfig = xbmc.translatePath(bookmark.get('lircrc')).decode('utf_8')
+        lircConfig = xbmcvfs.translatePath(bookmark.get('lircrc'))
         self.launchUrl(url, lircConfig)
 
     def linkcast(self, url):
-        lircConfig = xbmc.translatePath(DEFAULT_LIRC_CONFIG).decode('utf_8')
+        lircConfig = xbmcvfs.translatePath(DEFAULT_LIRC_CONFIG)
         self.launchUrl(url, lircConfig)
 
     def launchUrl(self, url, lircConfig):
         browserLockPath = os.path.join(self.profileFolder, 'browser.pid')
-        browserPath = self.getSetting('browserPath').decode('utf_8')
-        browserArgs = self.getSetting('browserArgs').decode('utf_8')
-        xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
-        soundServer = self.getSetting('soundServer').decode('utf_8')
-        alsaControl = self.getSetting('alsaControl').decode('utf_8') if soundServer == '1' else None
+        browserPath = self.getSetting('browserPath')
+        browserArgs = self.getSetting('browserArgs')
+        xdotoolPath = self.getSetting('xdotoolPath')
+        soundServer = self.getSetting('soundServer')
+        alsaControl = self.getSetting('alsaControl') if soundServer == '1' else None
         suspendKodi = self.unmarshalBool(self.getSetting('suspendKodi'))
 
         if not browserPath or not os.path.isfile(browserPath):

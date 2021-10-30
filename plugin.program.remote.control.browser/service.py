@@ -10,6 +10,7 @@ import xml.etree.ElementTree
 
 import xbmc
 import xbmcaddon
+import xbmcvfs
 
 
 # These libraries must be installed manually instead of through a Kodi module
@@ -248,10 +249,8 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
     def __init__(self):
         super(RemoteControlBrowserService, self).__init__()
         self.pluginId = self.getAddonInfo('id')
-        self.addonFolder = xbmc.translatePath(
-            self.getAddonInfo('path')).decode('utf_8')
-        self.profileFolder = xbmc.translatePath(
-            self.getAddonInfo('profile')).decode('utf_8')
+        self.addonFolder = xbmcvfs.translatePath(self.getAddonInfo('path'))
+        self.profileFolder = xbmcvfs.translatePath(self.getAddonInfo('profile'))
         self.settingsChangeLock = threading.Lock()
         self.isShutdown = False
         self.linkcastServer = None
@@ -331,8 +330,8 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             xbmc.log('Missing Python package: pulsectl', xbmc.LOGWARNING)
         self.setSetting('pulsectlInstalled', self.marshalBool(pulsectl))
 
-        browserPath = self.getSetting('browserPath').decode('utf_8')
-        xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
+        browserPath = self.getSetting('browserPath')
+        xdotoolPath = self.getSetting('xdotoolPath')
         if not browserPath or not xdotoolPath:
             defaults = self.getDefaults()
             if not browserPath:
