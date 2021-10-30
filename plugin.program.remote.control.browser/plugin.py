@@ -105,7 +105,7 @@ def slurpLine(stream, slurpLogGuard):
 
 def slurpLog(stream, slurpLogGuard):
     for line in iter(lambda: slurpLine(stream, slurpLogGuard), b''):
-        xbmc.log('BROWSER: ' + line, xbmc.LOGDEBUG)
+        xbmc.log('BROWSER: ' + line.decode('utf_8'), xbmc.LOGDEBUG)
     stream.close()
 
 
@@ -122,7 +122,7 @@ def lockPidfile(browserLockPath, pid):
             raise CompetingLaunchError()
         try:
             isMine = True
-            os.write(pidfile, str(pid))
+            os.write(pidfile, bytes(pid))
         finally:
             os.close(pidfile)
 
