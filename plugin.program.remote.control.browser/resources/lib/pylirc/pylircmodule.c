@@ -204,7 +204,7 @@ static PyObject * pylirc_nextcode(self, args)
 		  // Thanks alot to Brian J. Murrell for the contribution!
 		  
                   // Extract the repeat value from the code
-                  if (sscanf(code, "%*llx %x %*s %*s\n", &intRepeatCount) != 1)
+                  if (sscanf(code, "%*x %x %*s %*s\n", &intRepeatCount) != 1)
                      // some kind of error getting the repeat value, shouldnt happen...
                      intRepeatCount = 0;
                   
@@ -286,7 +286,16 @@ static PyMethodDef pylircMethods[] = {
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
-// Python init function
-void initpylirc(void) {
-    (void) Py_InitModule("pylirc", pylircMethods);
+static struct PyModuleDef pylircModuledef =
+{
+    PyModuleDef_HEAD_INIT,
+    "pylirc",
+    NULL,
+    -1,
+    pylircMethods
+};
+
+PyMODINIT_FUNC PyInit_pylirc(void)
+{
+    return PyModule_Create(&pylircModuledef);
 }

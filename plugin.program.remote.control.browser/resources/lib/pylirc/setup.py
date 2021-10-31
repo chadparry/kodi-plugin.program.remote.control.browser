@@ -18,7 +18,7 @@
 
 from distutils.core import setup, Extension
 
-module1 = Extension('pylircmodule',
+module1 = Extension('pylirc',
                     sources = ['pylircmodule.c'],
                     libraries = ['lirc_client'])
 
