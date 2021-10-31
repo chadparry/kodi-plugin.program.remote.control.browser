@@ -5,7 +5,7 @@ import io
 import os
 import shutil
 import tempfile
-import urllib2
+import urllib.request
 
 import PIL.Image
 import PIL.PngImagePlugin
@@ -17,7 +17,7 @@ def main():
     parser.add_argument('filename')
     args = parser.parse_args()
 
-    download = urllib2.urlopen(args.url)
+    download = urllib.request.urlopen(args.url)
     buffered = io.BytesIO(download.read())
     PIL.Image.open(buffered).verify()
     # The image must be re-opened after verification.

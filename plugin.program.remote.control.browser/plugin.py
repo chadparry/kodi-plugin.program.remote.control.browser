@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import datetime
 import errno
+import functools
 import json
 import math
 import os
@@ -11,17 +12,17 @@ import shlex
 import subprocess
 import sys
 import threading
-import urllib
-import urllib2
-import urlparse
+import urllib.request
+import urllib.parse
 import uuid
 import xml.etree.ElementTree
 
 import bs4
 import xbmc
-import xbmcplugin
-import xbmcgui
 import xbmcaddon
+import xbmcgui
+import xbmcplugin
+import xbmcvfs
 
 
 # If any of these packages are missing, the script will attempt to proceed
@@ -38,7 +39,7 @@ except ImportError:
     pulsectl = None
 
 
-DEFAULT_VOLUME = 50L
+DEFAULT_VOLUME = 50
 DEFAULT_LIRC_CONFIG = ('special://home/addons' +
                        '/plugin.program.remote.control.browser' +
                        '/resources/data/lircd/browser.lirc')
@@ -104,7 +105,7 @@ def slurpLine(stream, slurpLogGuard):
 
 def slurpLog(stream, slurpLogGuard):
     for line in iter(lambda: slurpLine(stream, slurpLogGuard), b''):
-        xbmc.log('BROWSER: ' + line, xbmc.LOGDEBUG)
+        xbmc.log('BROWSER: ' + line.decode('utf_8'), xbmc.LOGDEBUG)
     stream.close()
 
 
@@ -121,7 +122,7 @@ def lockPidfile(browserLockPath, pid):
             raise CompetingLaunchError()
         try:
             isMine = True
-            os.write(pidfile, str(pid))
+            os.write(pidfile, bytes(pid))
         finally:
             os.close(pidfile)
 
@@ -237,7 +238,7 @@ class VolumeGuard(object):
                     'Application.GetProperties',
                     {'properties': ['muted', 'volume']})
                 mute = bool(result['muted'])
-                volume = long(result['volume'])
+                volume = int(result['volume'])
             except (JsonRpcError, KeyError, ValueError) as e:
                 xbmc.log('Could not retrieve original Kodi volume: ' + str(e))
                 mute = False
@@ -336,10 +337,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         super(RemoteControlBrowserPlugin, self).__init__()
         self.handle = handle
         self.pluginId = self.getAddonInfo('id')
-        self.addonFolder = xbmc.translatePath(
-            self.getAddonInfo('path')).decode('utf_8')
-        self.profileFolder = xbmc.translatePath(
-            self.getAddonInfo('profile')).decode('utf_8')
+        self.addonFolder = xbmcvfs.translatePath(self.getAddonInfo('path'))
+        self.profileFolder = xbmcvfs.translatePath(self.getAddonInfo('profile'))
         self.bookmarksPath = os.path.join(self.profileFolder, 'bookmarks.xml')
         self.defaultBookmarksPath = os.path.join(
             self.addonFolder, 'resources/data/bookmarks.xml')
@@ -348,12 +347,12 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             self.addonFolder, 'resources/data/thumbs')
 
     def buildPluginUrl(self, query):
-        return urlparse.ParseResult(
+        return urllib.parse.ParseResult(
             scheme='plugin',
             netloc=self.pluginId,
             path='/',
             params=None,
-            query=urllib.urlencode(query),
+            query=urllib.parse.urlencode(query),
             fragment=None).geturl()
 
     def getThumbPath(self, thumbId, thumbsFolder=None):
@@ -365,7 +364,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         # A zero-width space is used to escape label metacharacters. Other
         # means of escaping, such as "$LBRACKET", don't work in the context of
         # ListItem labels.
-        return re.sub(u'[][$]', u'\\g<0>\u200B', label)
+        return re.sub('[][$]', '\\g<0>\u200B', label)
 
     def escapeNotification(self, message):
         # A notification needs to be encoded into a quoted byte string.
@@ -423,7 +422,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
         url = self.buildPluginUrl({'mode': 'addBookmark'})
         listItem = xbmcgui.ListItem(
-            u'[B]{}[/B]'.format(self.getLocalizedString(30001)))
+            '[B]{}[/B]'.format(self.getLocalizedString(30001)))
         listItem.setArt({
             'thumb': 'DefaultFile.png',
         })
@@ -452,7 +451,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     xbmc.log('Aborting fetch of webpage', xbmc.LOGINFO)
                     return
                 xbmc.log('Fetching webpage: ' + url, xbmc.LOGINFO)
-                webpage = urllib2.urlopen(url)
+                webpage = urllib.request.urlopen(url)
 
                 if isAborting.is_set():
                     xbmc.log('Aborting parse of webpage', xbmc.LOGINFO)
@@ -481,7 +480,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     linkElements,
                     key=lambda element: (
                         # Prefer large images.
-                        reduce(
+                        functools.reduce(
                             lambda prev, cur: prev * int(cur, 10),
                             re.findall(r'\d+', element['sizes']),
                             1)
@@ -508,7 +507,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 link = '/favicon.ico'
             else:
                 link = linkElement['href']
-            thumbUrl = urlparse.urljoin(base, link)
+            thumbUrl = urllib.parse.urljoin(base, link)
 
             if isAborting.is_set():
                 xbmc.log('Aborting creation of thumbs folder', xbmc.LOGINFO)
@@ -570,7 +569,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                     'Received scraped title: ' + str(defaultTitle),
                     xbmc.LOGDEBUG)
                 if defaultTitle is None:
-                    defaultTitle = urlparse.urlparse(url).netloc
+                    defaultTitle = urllib.parse.urlparse(url).netloc
 
             keyboard = xbmc.Keyboard(
                 defaultTitle, self.getLocalizedString(30003))
@@ -674,20 +673,20 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         tree = self.readBookmarks()
         bookmark = self.getBookmarkElement(tree, bookmarkId)
         url = bookmark.get('url')
-        lircConfig = xbmc.translatePath(bookmark.get('lircrc')).decode('utf_8')
+        lircConfig = xbmcvfs.translatePath(bookmark.get('lircrc'))
         self.launchUrl(url, lircConfig)
 
     def linkcast(self, url):
-        lircConfig = xbmc.translatePath(DEFAULT_LIRC_CONFIG).decode('utf_8')
+        lircConfig = xbmcvfs.translatePath(DEFAULT_LIRC_CONFIG)
         self.launchUrl(url, lircConfig)
 
     def launchUrl(self, url, lircConfig):
         browserLockPath = os.path.join(self.profileFolder, 'browser.pid')
-        browserPath = self.getSetting('browserPath').decode('utf_8')
-        browserArgs = self.getSetting('browserArgs').decode('utf_8')
-        xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
-        soundServer = self.getSetting('soundServer').decode('utf_8')
-        alsaControl = self.getSetting('alsaControl').decode('utf_8') if soundServer == '1' else None
+        browserPath = self.getSetting('browserPath')
+        browserArgs = self.getSetting('browserArgs')
+        xdotoolPath = self.getSetting('xdotoolPath')
+        soundServer = self.getSetting('soundServer')
+        alsaControl = self.getSetting('alsaControl') if soundServer == '1' else None
         suspendKodi = self.unmarshalBool(self.getSetting('suspendKodi'))
 
         if not browserPath or not os.path.isfile(browserPath):
@@ -699,12 +698,12 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         # Flashing a white screen looks bad, but it is improved with a black
         # interstitial page.
         blackPath = os.path.join(self.addonFolder, 'resources/data/black.html')
-        blackUrl = urlparse.ParseResult(
+        blackUrl = urllib.parse.ParseResult(
             scheme='file',
             netloc=None,
             path=blackPath,
             params=None,
-            query=urllib.quote_plus(url),
+            query=urllib.parse.quote_plus(url),
             fragment=None).geturl()
 
         browserCmd = [browserPath] + shlex.split(browserArgs) + [blackUrl]
@@ -815,8 +814,8 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
 
 def parsedParams(search):
-    query = urlparse.urlparse(search).query
-    return urlparse.parse_qs(query, strict_parsing=True) if query else {}
+    query = urllib.parse.urlparse(search).query
+    return urllib.parse.parse_qs(query, strict_parsing=True) if query else {}
 
 
 def getUrl(args):

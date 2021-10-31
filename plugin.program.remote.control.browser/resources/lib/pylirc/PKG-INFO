@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: pylirc
+Version: 0.0.5
+Summary: Python lirc module. See http://www.lirc.org for more info on lirc
+Home-page: UNKNOWN
+Author: Linus McCabe
+Author-email: Linus@McCabe.nu
+License: lgpl
+Description: UNKNOWN
+Platform: UNKNOWN

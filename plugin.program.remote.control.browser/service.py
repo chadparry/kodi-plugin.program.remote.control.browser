@@ -1,16 +1,16 @@
-import BaseHTTPServer
+import http.server
 import cgi
 import collections
 import json
 import os
 import re
 import threading
-import urllib
-import urlparse
+import urllib.parse
 import xml.etree.ElementTree
 
 import xbmc
 import xbmcaddon
+import xbmcvfs
 
 
 # These libraries must be installed manually instead of through a Kodi module
@@ -55,32 +55,32 @@ class LinkcastMonitor(xbmc.Monitor):
         self.addon.reloadLinkcastServer()
 
 
-class LinkcastServer(BaseHTTPServer.HTTPServer):
+class LinkcastServer(http.server.HTTPServer):
 
     def __init__(self, addon, server_address):
-        BaseHTTPServer.HTTPServer.__init__(
+        http.server.HTTPServer.__init__(
             self, server_address, LinkcastRequestHandler)
         self.addon = addon
 
 
-class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class LinkcastRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         xbmc.log('Received GET request: ' + self.path, xbmc.LOGINFO)
-        components = urlparse.urlparse(self.path)
+        components = urllib.parse.urlparse(self.path)
         handler = self.GET_HANDLERS.get(components.path)
         if handler is None:
             self.send_error(404)
             return
 
         query = components.query
-        params = urlparse.parse_qs(query, strict_parsing=True) if query else {}
+        params = urllib.parse.parse_qs(query, strict_parsing=True) if query else {}
 
         handler(self, params)
 
     def do_POST(self):
         xbmc.log('Received POST request: ' + self.path, xbmc.LOGINFO)
-        components = urlparse.urlparse(self.path)
+        components = urllib.parse.urlparse(self.path)
         handler = self.POST_HANDLERS.get(components.path)
         if handler is None:
             self.send_error(404)
@@ -96,7 +96,7 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return
         length = int(self.headers.getheader('Content-Length'))
         payload = self.rfile.read(length)
-        params = urlparse.parse_qs(payload, keep_blank_values=True)
+        params = urllib.parse.parse_qs(payload, keep_blank_values=True)
 
         handler(self, params)
 
@@ -114,9 +114,9 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if url is None:
             url = ''
-            status = u''
+            status = ''
         else:
-            status = u'<div id="status">{}</div>\n'.format(
+            status = '<div id="status">{}</div>\n'.format(
                 cgi.escape(self.server.addon.getLocalizedString(30034)))
 
         indexPath = os.path.join(
@@ -179,7 +179,7 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', origin)
         self.end_headers()
 
-        self.wfile.write(u'{}'.encode('utf_8'))
+        self.wfile.write('{}'.encode('utf_8'))
 
     def serveHtmlLinkcast(self, params):
         url = next(iter(params.get('url', [])), None)
@@ -190,29 +190,29 @@ class LinkcastRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.linkcast(url)
 
         self.send_response(302)
-        location = urlparse.ParseResult(
+        location = urllib.parse.ParseResult(
             scheme=None,
             netloc=None,
             path=self.INDEX_PATH,
             params=None,
-            query=urllib.urlencode({'url': url}),
+            query=urllib.parse.urlencode({'url': url}),
             fragment=None).geturl()
         self.send_header('Location', location)
         self.end_headers()
 
     def serveTemplate(self, path, params):
         META_VARIABLES = {
-            'LEFT_CURLY_BRACKET': u'{{',
-            'RIGHT_CURLY_BRACKET': u'}}',
+            'LEFT_CURLY_BRACKET': '{{',
+            'RIGHT_CURLY_BRACKET': '}}',
         }
-        template_vars = dict(META_VARIABLES.items() + params.items())
+        template_vars = dict(list(META_VARIABLES.items()) + list(params.items()))
 
         def repl(match):
             return template_vars[match.group(1)]
 
         with open(path) as template_file:
             template = template_file.read()
-        expanded = re.sub(u'{{([^{}]+)}}', repl, template)
+        expanded = re.sub('{{([^{}]+)}}', repl, template)
         self.wfile.write(expanded.encode('utf_8'))
 
     def linkcast(self, url):
@@ -249,10 +249,8 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
     def __init__(self):
         super(RemoteControlBrowserService, self).__init__()
         self.pluginId = self.getAddonInfo('id')
-        self.addonFolder = xbmc.translatePath(
-            self.getAddonInfo('path')).decode('utf_8')
-        self.profileFolder = xbmc.translatePath(
-            self.getAddonInfo('profile')).decode('utf_8')
+        self.addonFolder = xbmcvfs.translatePath(self.getAddonInfo('path'))
+        self.profileFolder = xbmcvfs.translatePath(self.getAddonInfo('profile'))
         self.settingsChangeLock = threading.Lock()
         self.isShutdown = False
         self.linkcastServer = None
@@ -267,12 +265,12 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             pass
 
     def buildPluginUrl(self, query):
-        return urlparse.ParseResult(
+        return urllib.parse.ParseResult(
             scheme='plugin',
             netloc=self.pluginId,
             path='/',
             params=None,
-            query=urllib.urlencode(query),
+            query=urllib.parse.urlencode(query),
             fragment=None).geturl()
 
     def getDefaults(self):
@@ -332,8 +330,8 @@ class RemoteControlBrowserService(xbmcaddon.Addon):
             xbmc.log('Missing Python package: pulsectl', xbmc.LOGWARNING)
         self.setSetting('pulsectlInstalled', self.marshalBool(pulsectl))
 
-        browserPath = self.getSetting('browserPath').decode('utf_8')
-        xdotoolPath = self.getSetting('xdotoolPath').decode('utf_8')
+        browserPath = self.getSetting('browserPath')
+        xdotoolPath = self.getSetting('xdotoolPath')
         if not browserPath or not xdotoolPath:
             defaults = self.getDefaults()
             if not browserPath:

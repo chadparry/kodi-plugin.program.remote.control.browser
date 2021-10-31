@@ -46,10 +46,10 @@ except ImportError:
     pylirc = None
 
 
-VOLUME_MIN = 0L
-VOLUME_MAX = 100L
-DEFAULT_VOLUME = 50L
-DEFAULT_VOLUME_STEP = 1L
+VOLUME_MIN = 0
+VOLUME_MAX = 100
+DEFAULT_VOLUME = 50
+DEFAULT_VOLUME_STEP = 1
 RELEASE_KEY_DELAY = datetime.timedelta(seconds=1)
 BROWSER_EXIT_DELAY = datetime.timedelta(seconds=3)
 
