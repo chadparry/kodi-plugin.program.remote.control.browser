@@ -368,7 +368,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
     def escapeNotification(self, message):
         # A notification needs to be encoded into a quoted byte string.
-        return message.encode('utf_8').replace('"', r'\"')
+        return message.replace('"', r'\"').encode('utf_8')
 
     def readBookmarks(self):
         try:
