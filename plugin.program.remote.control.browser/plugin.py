@@ -368,7 +368,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
 
     def escapeNotification(self, message):
         # A notification needs to be encoded into a quoted byte string.
-        return message.encode('utf_8').replace('"', r'\"')
+        return message.replace('"', r'\"').encode('utf_8')
 
     def readBookmarks(self):
         try:
@@ -579,14 +579,14 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                 return
             title = keyboard.getText()
 
-            if scraper.isAlive():
+            if scraper.is_alive():
                 xbmc.log('Waiting for scrape of thumbnail', xbmc.LOGDEBUG)
                 with InterminableProgressBar(
                     self.getLocalizedString(30029)) as progress:
                     while True:
                         scraper.join(
                             progress.DEFAULT_TICK_INTERVAL.total_seconds())
-                        if not scraper.isAlive():
+                        if not scraper.is_alive():
                             break
                         if progress.iscanceled():
                             xbmc.log(
@@ -596,7 +596,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
                         progress.tick()
                 xbmc.log('Finished scrape of thumbnail', xbmc.LOGDEBUG)
         finally:
-            if scraper.isAlive():
+            if scraper.is_alive():
                 isAborting.set()
                 xbmc.log('Joining with aborted scraper thread', xbmc.LOGDEBUG)
                 scraper.join()
