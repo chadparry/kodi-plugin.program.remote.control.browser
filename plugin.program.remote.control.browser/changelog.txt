@@ -1,4 +1,4 @@
-v3.0.0 (2024-12-16)
+v3.0.0 (2025-12-16)
 - Update for Kodi v20+ (Nexus/Omega) compatibility
 
 v2.0.0 (2021-10-30)
