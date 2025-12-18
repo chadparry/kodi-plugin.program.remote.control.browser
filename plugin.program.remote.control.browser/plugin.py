@@ -743,7 +743,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
         alsaCmd = [] if alsaControl is None else [
                 '--alsa-control', alsaControl,
             ]
-        xdotoolCmd = [] if xdotoolPath is None else [
+        xdotoolCmd = [] if not xdotoolPath else [
                 '--xdotool-path', xdotoolPath,
             ]
         if xbmc.getCondVisibility('System.Platform.Windows'):
