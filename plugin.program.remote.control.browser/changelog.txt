@@ -1,3 +1,9 @@
+v3.0.1 (2025-12-17)
+- Fix Kodi Omega (v21) compatibility
+- Update xbmc.gui to 5.17.0 for Omega
+- Update dependency versions (BeautifulSoup4 4.12.2, PIL 5.1.0)
+- Replace deprecated Python 2 code (cgi.escape, headers.getheader)
+
 v3.0.0 (2025-12-16)
 - Update for Kodi v20+ (Nexus/Omega) compatibility
 
