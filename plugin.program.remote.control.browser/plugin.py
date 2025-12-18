@@ -6,7 +6,6 @@ import functools
 import json
 import math
 import os
-import pipes
 import re
 import shlex
 import subprocess
@@ -755,7 +754,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             creationflags = 0
         xbmc.log(
             'Launching wrapper for browser: ' +
-            ' '.join(pipes.quote(arg) for arg in browserCmd),
+            ' '.join(shlex.quote(arg) for arg in browserCmd),
             xbmc.LOGINFO)
         commandArgs = (
             [
@@ -798,7 +797,7 @@ class RemoteControlBrowserPlugin(xbmcaddon.Addon):
             slurper.join()
 
         if proc.returncode:
-            commandLine = ' '.join(pipes.quote(arg) for arg in commandArgs)
+            commandLine = ' '.join(shlex.quote(arg) for arg in commandArgs)
             xbmc.log(
                 'Failed to spawn browser, errno=' + str(proc.returncode) + ': ' + commandLine,
                 xbmc.LOGERROR)
@@ -836,7 +835,7 @@ def getBookmarkId(args):
 
 def main():
     xbmc.log(
-        'Plugin called: ' + ' '.join(pipes.quote(arg) for arg in sys.argv),
+        'Plugin called: ' + ' '.join(shlex.quote(arg) for arg in sys.argv),
         xbmc.LOGDEBUG)
     parser = argparse.ArgumentParser()
     parser.add_argument('handle', type=int)

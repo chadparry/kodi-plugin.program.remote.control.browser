@@ -7,7 +7,6 @@ import datetime
 import errno
 import logging
 import os
-import pipes
 import select
 import shlex
 import signal
@@ -240,7 +239,7 @@ def execBrowser(browserCmd):
         try:
             logger.info(
                 'Launching browser: ' +
-                ' '.join(pipes.quote(arg) for arg in browserCmd))
+                ' '.join(shlex.quote(arg) for arg in browserCmd))
             proc = subprocess.Popen(browserCmd, close_fds=True)
             try:
                 # Monitor the browser and kick the socket when it exits.
@@ -315,7 +314,7 @@ def raiseBrowser(pid, xdotoolPath):
     cmd = [xdotoolPath, 'search', '--sync', '--onlyvisible', '--pid', str(pid)]
     logger.info(
         'Searching for browser PID: ' +
-        ' '.join(pipes.quote(arg) for arg in cmd))
+        ' '.join(shlex.quote(arg) for arg in cmd))
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, universal_newlines=True)
     try:
@@ -472,7 +471,7 @@ def driveBrowser(xdotoolPath, mixer, lircFd, browserExitFd, abortFd, parentFd):
                     cmd = [xdotoolPath] + inputs
                     logger.debug(
                         'Executing: ' +
-                        ' '.join(pipes.quote(arg) for arg in cmd))
+                        ' '.join(shlex.quote(arg) for arg in cmd))
                     subprocess.check_call(cmd)
                 else:
                     logger.debug('Ignoring xdotool inputs: ' + str(inputs))
