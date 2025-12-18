@@ -1,6 +1,7 @@
 import http.server
 import cgi
 import collections
+import html
 import json
 import os
 import re
@@ -86,7 +87,7 @@ class LinkcastRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
-        contentType = self.headers.getheader('Content-Type')
+        contentType = self.headers.get('Content-Type')
         if contentType is None:
             self.send_error(400, 'Missing content type: {}')
             return
@@ -94,7 +95,7 @@ class LinkcastRequestHandler(http.server.BaseHTTPRequestHandler):
         if ctype != 'application/x-www-form-urlencoded':
             self.send_error(400, 'Unsupported content type: {}'.format(ctype))
             return
-        length = int(self.headers.getheader('Content-Length'))
+        length = int(self.headers.get('Content-Length'))
         payload = self.rfile.read(length)
         params = urllib.parse.parse_qs(payload, keep_blank_values=True)
 
@@ -117,20 +118,20 @@ class LinkcastRequestHandler(http.server.BaseHTTPRequestHandler):
             status = ''
         else:
             status = '<div id="status">{}</div>\n'.format(
-                cgi.escape(self.server.addon.getLocalizedString(30034)))
+                html.escape(self.server.addon.getLocalizedString(30034)))
 
         indexPath = os.path.join(
             self.server.addon.addonFolder, 'resources/data/index.html')
         self.serveTemplate(indexPath, {
-            'TITLE_HTML': cgi.escape(
+            'TITLE_HTML': html.escape(
                 self.server.addon.getLocalizedString(30032)),
-            'SUBTITLE_HTML': cgi.escape(
+            'SUBTITLE_HTML': html.escape(
                 self.server.addon.getLocalizedString(30033)),
             'STATUS': status,
-            'URL_ATTR': cgi.escape(url, quote=True),
-            'SUBMIT_ATTR': cgi.escape(
+            'URL_ATTR': html.escape(url, quote=True),
+            'SUBMIT_ATTR': html.escape(
                 self.server.addon.getLocalizedString(30035), quote=True),
-            'INSTRUCTIONS_HTML': cgi.escape(
+            'INSTRUCTIONS_HTML': html.escape(
                 self.server.addon.getLocalizedString(30036)),
             'UNSUPPORTED_SCHEME_CSTR': json.dumps(
                 self.server.addon.getLocalizedString(30037)),
@@ -159,7 +160,7 @@ class LinkcastRequestHandler(http.server.BaseHTTPRequestHandler):
         closePath = os.path.join(
             self.server.addon.addonFolder, 'resources/data/close.html')
         self.serveTemplate(closePath, {
-            'TITLE_HTML': cgi.escape(
+            'TITLE_HTML': html.escape(
                 self.server.addon.getLocalizedString(30032)),
         })
 
@@ -174,7 +175,7 @@ class LinkcastRequestHandler(http.server.BaseHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
-        origin = self.headers.getheader('Origin')
+        origin = self.headers.get('Origin')
         if origin is not None:
             self.send_header('Access-Control-Allow-Origin', origin)
         self.end_headers()
