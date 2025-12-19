@@ -1,3 +1,7 @@
+v3.0.2 (2025-12-18)
+- Replace deprecated packages
+- Allow xdotool to be empty
+
 v3.0.1 (2025-12-17)
 - Fix Kodi Omega (v21) compatibility
 - Update xbmc.gui to 5.17.0 for Omega

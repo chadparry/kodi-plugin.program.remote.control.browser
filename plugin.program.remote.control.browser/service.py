@@ -1,6 +1,6 @@
 import http.server
-import cgi
 import collections
+import email.message
 import html
 import json
 import os
@@ -91,7 +91,9 @@ class LinkcastRequestHandler(http.server.BaseHTTPRequestHandler):
         if contentType is None:
             self.send_error(400, 'Missing content type: {}')
             return
-        (ctype, _) = cgi.parse_header(contentType)
+        msg = email.message.Message()
+        msg['content-type'] = contentType
+        ctype = msg.get_content_type()
         if ctype != 'application/x-www-form-urlencoded':
             self.send_error(400, 'Unsupported content type: {}'.format(ctype))
             return
