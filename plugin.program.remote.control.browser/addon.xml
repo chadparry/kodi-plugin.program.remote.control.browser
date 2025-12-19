@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="plugin.program.remote.control.browser" name="Remote Control Browser" version="3.0.1" provider-name="Chad Parry">
+<addon id="plugin.program.remote.control.browser" name="Remote Control Browser" version="3.0.2" provider-name="Chad Parry">
     <requires>
         <import addon="xbmc.gui" version="5.17.0"/>
         <import addon="xbmc.python" version="3.0.1"/>
@@ -23,11 +23,8 @@
         <disclaimer lang="en_US">The experience will be degraded unless these external dependencies are installed: “psutil,” “pulsectl,” “pyalsaaudio,” “pylirc2,” and “Pillow.” Another helpful utility is “unclutter,” which automatically hides the mouse pointer. (On a Debian-based system, run “sudo apt install -y python3-pip python3-psutil python3-pil liblirc-dev unclutter &amp;&amp; sudo pip3 install pulsectl pyalsaaudio ~/.kodi/addons/plugin.program.remote.control.browser/resources/lib/pylirc”). Finally, a theme with a large mouse pointer will improve pointer visibility, (e.g., https://www.gnome-look.org/p/999574/).</disclaimer>
         <disclaimer lang="de_DE">Die Erfahrung wird vermindert werden, wenn nicht diese externen Abhängigkeiten installiert sind: „psutil“, „pulsectl“, „pyalsaaudio“, „pylirc2“ und „Pillow“. Ein weiteres hilfreiches Werkzeug ist „unclutter“, das automatisch den Mauszeiger versteckt. (Auf einem Debian-basierten System führen Sie „sudo apt install -y python3-pip python3-psutil python3-pil liblirc-dev unclutter &amp;&amp; sudo pip3 install pulsectl pyalsaaudio ~/.kodi/addons/plugin.program.remote.control.browser/resources/lib/pylirc“ aus). Schließlich wird ein Theme mit einem großen Mauszeiger die Sichtbarkeit verbessern, (zum Beispiel https://www.gnome-look.org/p/999574/).</disclaimer>
         <disclaimer lang="pt_BR">A experiência será degradada, a menos que essas dependências externas estejam instaladas: “psutil”, “pulsectl”, “pyalsaaudio”, “pylirc2” e “Pillow”. Outra ferramenta útil é “unclutter”, que oculta automaticamente o ponteiro do mouse. (Em um sistema baseado em Debian, execute “sudo apt install -y python3-pip python3-psutil python3-pil liblirc-dev unclutter &amp;&amp; sudo pip3 install pulsectl pyalsaaudio ~/.kodi/addons/plugin.program.remote.control.browser/resources/lib/pylirc”). Finalmente, um tema com um ponteiro do mouse grande irá melhorar a visibilidade do ponteiro, (por exemplo, https://www.gnome-look.org/p/999574/).</disclaimer>
-        <news>v3.0.1 (2025-12-17)
-- Fix Kodi Omega (v21) compatibility
-- Update xbmc.gui to 5.17.0 for Omega
-- Update dependency versions (BeautifulSoup4 4.12.2, PIL 5.1.0)
-- Replace deprecated Python 2 code (cgi.escape, headers.getheader)</news>
+	<news>v3.0.0 (2025-12-16)
+- Update for Kodi v20+ (Nexus/Omega) compatibility</news>
         <platform>linux osx</platform>
         <language></language>
         <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
